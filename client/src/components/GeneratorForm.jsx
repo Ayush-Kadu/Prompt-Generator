@@ -21,6 +21,7 @@ export default function GeneratorForm({ meta, form, setForm, onSubmit, busy, onE
   const fileRef = useRef(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [extracting, setExtracting] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [profile, setProfile] = useState(null);
   const [suggested, setSuggested] = useState([]);
 
@@ -81,15 +82,35 @@ export default function GeneratorForm({ meta, form, setForm, onSubmit, busy, onE
   };
 
   const addKeywords = (list) => {
-    set({ keywords: [form.keywords.trim(), ...list].filter(Boolean).join('\n') });
+    setForm((f) => ({ ...f, keywords: [f.keywords.trim(), ...list].filter(Boolean).join('\n') }));
     setSuggested((s) => s.filter((k) => !list.includes(k)));
   };
 
   const onFile = async (e) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    addKeywords(await readKeywordFile(file));
     e.target.value = '';
+    if (!file) return;
+    if (/\.xls$/i.test(file.name)) {
+      onError('Old .xls files are not supported. Save the sheet as .xlsx in Excel and import it again.');
+      return;
+    }
+    setImporting(true);
+    try {
+      if (/\.xlsx$/i.test(file.name)) {
+        const r = await api.importKeywords(file);
+        if (!r.keywords.length) {
+          onError('No keywords found in that workbook. Put them in the first column, or under a "Keyword" header.');
+        } else {
+          addKeywords(r.keywords);
+          if (r.truncated) onError(`Imported the first ${r.keywords.length} of ${r.total} keywords (the limit is ${r.keywords.length}).`);
+        }
+      } else {
+        addKeywords(await readKeywordFile(file));
+      }
+    } catch (err) {
+      onError(`Import failed: ${err.message}`);
+    }
+    setImporting(false);
   };
 
   const toggleIntent = (i) =>
@@ -186,9 +207,11 @@ export default function GeneratorForm({ meta, form, setForm, onSubmit, busy, onE
               <button type="button" className="link" onClick={extract} disabled={extracting || (!form.brandWebsite && !form.brandIndustry && !keywords.length)}>
                 {extracting ? 'Suggesting…' : 'Suggest keywords'}
               </button>
-              <button type="button" className="link" onClick={() => fileRef.current?.click()}>Import .txt / .csv</button>
+              <button type="button" className="link" onClick={() => fileRef.current?.click()} disabled={importing}>
+                {importing ? 'Importing…' : 'Import .txt / .csv / .xlsx'}
+              </button>
             </span>
-            <input ref={fileRef} type="file" accept=".txt,.csv" hidden onChange={onFile} />
+            <input ref={fileRef} type="file" accept=".txt,.csv,.xlsx" hidden onChange={onFile} />
           </div>
           <textarea rows={6} value={form.keywords} placeholder={'One per line or comma separated\ncustom cakes\nbirthday cakes\neggless cakes'}
             onChange={(e) => set({ keywords: e.target.value })} />

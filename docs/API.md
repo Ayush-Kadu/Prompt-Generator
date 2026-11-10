@@ -104,6 +104,11 @@ curl -X POST localhost:5000/api/v1/brand/analyze -d '{"website":"sweetcrumbs.in"
 # Keyword extraction → { keywords: [{ keyword, type }], source, profile }
 curl -X POST localhost:5000/api/v1/keywords/extract -d '{"brand":{"name":"Sweet Crumbs","website":"sweetcrumbs.in"},"seedKeywords":["custom cakes"],"limit":40}'
 
+# Keyword import from Excel → { keywords: string[], total, truncated, sheet }
+# Send the .xlsx file itself as the body. Reads the first sheet with data: the column headed
+# "Keyword" (or "Keywords", "Term", "Query"…) if row 1 has one, otherwise column A. Deduped, max 2,000. .xls is not supported.
+curl -X POST localhost:5000/api/v1/keywords/import -H 'content-type: application/octet-stream' --data-binary @keywords.xlsx
+
 # Categorize or score prompts generated anywhere (no LLM call)
 curl -X POST localhost:5000/api/v1/prompts/categorize -d '{"brand":{"name":"Acme"},"prompts":[{"text":"Acme reviews"}]}'
 curl -X POST localhost:5000/api/v1/prompts/score      -d '{"brand":{"name":"Acme"},"prompts":[{"text":"best crm for startups","keyword":"crm"}]}'

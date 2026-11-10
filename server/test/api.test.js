@@ -20,7 +20,7 @@ async function start(env = {}) {
   const base = `http://127.0.0.1:${server.address().port}/api/v1`;
   const call = (path, { method = 'GET', body, headers = {} } = {}) =>
     fetch(`${base}${path}`, { method, headers: { 'content-type': 'application/json', ...headers }, body: body && JSON.stringify(body) });
-  return { server, call };
+  return { server, call, base };
 }
 
 test('meta lists providers, languages and the default provider', async (t) => {
@@ -92,6 +92,31 @@ test('async run → poll → edit → export xlsx/csv', async (t) => {
 
   const csv = await (await call(`/runs/${runId}/export?format=csv&all=1`)).text();
   assert.equal(csv.trim().split('\r\n').length, 13);
+});
+
+test('keywords import reads an .xlsx sheet (Keyword column, dedupe) and rejects other bodies', async (t) => {
+  const { server, base } = await start();
+  t.after(() => server.close());
+  const upload = (body, type) => fetch(`${base}/keywords/import`, { method: 'POST', headers: { 'content-type': type }, body });
+
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Keywords');
+  [['Volume', 'Keyword'], [1200, 'custom cakes'], [800, 'Eggless cakes'], [300, ' Custom  cakes '], [100, ''], [50, 'birthday cakes']]
+    .forEach((r) => ws.addRow(r));
+  const res = await upload(await wb.xlsx.writeBuffer(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  const r = await res.json();
+  assert.equal(res.status, 200, JSON.stringify(r));
+  assert.deepEqual(r.keywords, ['custom cakes', 'Eggless cakes', 'birthday cakes']);
+  assert.equal(r.sheet, 'Keywords');
+  assert.equal(r.truncated, false);
+
+  // No header row: the first column is used as-is.
+  const plain = new ExcelJS.Workbook();
+  plain.addWorksheet('Sheet1').addRows([['crm software'], ['email tools']]);
+  assert.deepEqual((await (await upload(await plain.xlsx.writeBuffer(), 'application/octet-stream')).json()).keywords, ['crm software', 'email tools']);
+
+  assert.equal((await upload('not a workbook', 'application/octet-stream')).status, 400);
+  assert.equal((await upload(JSON.stringify({ keywords: ['x'] }), 'application/json')).status, 400);
 });
 
 test('API keys are enforced when configured', async (t) => {

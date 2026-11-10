@@ -5,14 +5,18 @@
 const BASE = `${(import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')}/api/v1`;
 const KEY = import.meta.env.VITE_ENGINE_API_KEY;
 
-const headers = () => ({
-  'content-type': 'application/json',
+const headers = (contentType = 'application/json') => ({
+  'content-type': contentType,
   'x-client': 'ui',
   ...(KEY ? { authorization: `Bearer ${KEY}` } : {}),
 });
 
-async function request(path, { method = 'GET', body } = {}) {
-  const res = await fetch(`${BASE}${path}`, { method, headers: headers(), body: body ? JSON.stringify(body) : undefined });
+/** `body` is sent as JSON; `file` (a File/Blob) is sent as-is. */
+async function request(path, { method = 'GET', body, file } = {}) {
+  const init = file
+    ? { method, headers: headers(file.type || 'application/octet-stream'), body: file }
+    : { method, headers: headers(), body: body ? JSON.stringify(body) : undefined };
+  const res = await fetch(`${BASE}${path}`, init);
   if (res.status === 204) return null;
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -27,6 +31,7 @@ export const api = {
   meta: () => request('/meta'),
   analyzeBrand: (body) => request('/brand/analyze', { method: 'POST', body }),
   extractKeywords: (body) => request('/keywords/extract', { method: 'POST', body }),
+  importKeywords: (file) => request('/keywords/import', { method: 'POST', file }),
   startRun: (body) => request('/runs', { method: 'POST', body }),
   run: (id) => request(`/runs/${id}`),
   runs: () => request('/runs'),

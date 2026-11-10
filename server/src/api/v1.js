@@ -1,6 +1,6 @@
 // Versioned public API. A thin HTTP layer: it picks a provider, builds an
 // engine, and maps results. All prompt logic lives in @promptgen/engine.
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { z } from 'zod';
 import {
   BRAND_MODES, ENGINE_VERSION, GenerateSchema, INTENTS, LANGUAGES, LIMITS, SCORE_WEIGHTS, SENTIMENTS, createPromptEngine,
@@ -9,6 +9,7 @@ import { asyncRoute } from '../middleware.js';
 import { cancelRun, enqueueRun, jobProgress } from '../jobs.js';
 import { createRun, deleteRun, getRun, listRuns, storeKind, updateRun } from '../store.js';
 import { buildWorkbook, fileName, toCsv } from '../exporters.js';
+import { readKeywordsFromXlsx } from '../importers.js';
 
 /**
  * @param {{registry: ReturnType<import('@promptgen/providers').createProviderRegistry>, config: object}} deps
@@ -57,6 +58,14 @@ export function createV1Router({ registry, config }) {
   router.post('/keywords/extract', asyncRoute(async (req, res) => {
     const { engine, provider, model } = engineFor(req.body);
     res.json({ ...(await engine.extractKeywords(req.body)), provider, model });
+  }));
+
+  /** Import keywords from an Excel workbook: send the .xlsx file itself as the request body. */
+  router.post('/keywords/import', express.raw({ type: () => true, limit: '5mb' }), asyncRoute(async (req, res) => {
+    if (!Buffer.isBuffer(req.body) || !req.body.length) {
+      return res.status(400).json({ error: 'Send the .xlsx file as the request body (not JSON).' });
+    }
+    res.json(await readKeywordsFromXlsx(req.body));
   }));
 
   router.post('/prompts/categorize', (req, res, next) => {
