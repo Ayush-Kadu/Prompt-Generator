@@ -124,6 +124,10 @@ select.inline:hover { border-color: var(--border); }
 .pager .pages button { min-width: 30px; padding: 4px 8px; font-size: 0.8rem; }
 .pager .pages button.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
 .pager .gap { color: var(--muted); padding: 0 2px; }
+.jump { display: flex; align-items: center; gap: 6px; margin: 0; }
+.jump label { display: flex; align-items: center; gap: 6px; color: var(--muted); white-space: nowrap; }
+.jump input { width: 64px; padding: 3px 6px; font-size: 0.8rem; }
+.jump button { padding: 4px 10px; font-size: 0.8rem; }
 .per-page { display: flex; align-items: center; gap: 6px; color: var(--muted); white-space: nowrap; }
 .per-page select { width: auto; padding: 3px 6px; font-size: 0.8rem; }
 

@@ -20,8 +20,18 @@ function pageList(current, pages) {
 }
 
 function Pager({ current, pages, pageSize, total, onPage, onPageSize, className = '' }) {
+  const [jump, setJump] = useState('');
   const from = total ? current * pageSize + 1 : 0;
   const to = Math.min(total, (current + 1) * pageSize);
+  const jumpTo = Number(jump);
+  const canJump = Number.isInteger(jumpTo) && jumpTo >= 1;
+  // Numbers past the end go to the last page.
+  const submitJump = (e) => {
+    e.preventDefault();
+    if (!canJump) return;
+    onPage(Math.min(jumpTo, pages) - 1);
+    setJump('');
+  };
   return (
     <nav className={`pager ${className}`} aria-label="Result pages">
       <span className="range">{from}–{to} of {total}</span>
@@ -38,6 +48,17 @@ function Pager({ current, pages, pageSize, total, onPage, onPageSize, className 
             )))}
           <button type="button" disabled={current >= pages - 1} onClick={() => onPage(current + 1)} aria-label="Next page">›</button>
         </div>
+      )}
+      {pages > 1 && (
+        <form className="jump" onSubmit={submitJump}>
+          <label>
+            Go to
+            <input type="number" inputMode="numeric" min={1} max={pages} step={1} value={jump} placeholder={String(current + 1)}
+              aria-label={`Page number, 1 to ${pages}`} onChange={(e) => setJump(e.target.value)} />
+            of {pages}
+          </label>
+          <button type="submit" disabled={!canJump}>Go</button>
+        </form>
       )}
       {onPageSize && (
         <label className="per-page">
