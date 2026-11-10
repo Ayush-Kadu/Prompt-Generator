@@ -1,0 +1,13 @@
+{
+  "name": "@promptgen/providers",
+  "version": "1.0.0",
+  "description": "LLM provider adapters (OpenAI, Anthropic Claude, Google Gemini, OpenAI-compatible) behind one interface.",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\""
+  }
+}

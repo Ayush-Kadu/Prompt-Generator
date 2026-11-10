@@ -1,0 +1,23 @@
+{
+  "name": "prompt-generator",
+  "version": "2.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/engine",
+    "packages/providers",
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,green \"npm run dev -w server\" \"npm run dev -w client\"",
+    "build": "npm run build -w client",
+    "start": "npm start -w server",
+    "test": "npm test -w packages/engine -w packages/providers -w server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "overrides": {
+    "rollup": "npm:@rollup/wasm-node@^4.30.0"
+  }
+}

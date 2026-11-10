@@ -1,0 +1,16 @@
+{
+  "name": "@promptgen/engine",
+  "version": "1.0.0",
+  "description": "Provider-agnostic prompt generation engine: brand analysis, keyword extraction, prompt recommendations, categorization and quality scoring.",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "dependencies": {
+    "zod": "^3.24.1"
+  }
+}
