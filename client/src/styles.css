@@ -116,7 +116,16 @@ td.empty { text-align: center; color: var(--muted); padding: 24px; }
 select.inline { padding: 2px 4px; font-size: 0.8rem; width: auto; border-color: transparent; background: transparent; }
 select.inline:hover { border-color: var(--border); }
 .row-actions { white-space: nowrap; }
-.pager { display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 10px; font-size: 0.85rem; }
+.pager { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 0.8rem; }
+.pager.top { margin-left: auto; }
+.pager.bottom { justify-content: flex-end; margin-top: 10px; }
+.pager .range { color: var(--muted); white-space: nowrap; }
+.pager .pages { display: flex; align-items: center; gap: 4px; }
+.pager .pages button { min-width: 30px; padding: 4px 8px; font-size: 0.8rem; }
+.pager .pages button.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.pager .gap { color: var(--muted); padding: 0 2px; }
+.per-page { display: flex; align-items: center; gap: 6px; color: var(--muted); white-space: nowrap; }
+.per-page select { width: auto; padding: 3px 6px; font-size: 0.8rem; }
 
 .history ul { list-style: none; margin: 0; padding: 0; }
 .history li { display: flex; align-items: center; border-radius: 6px; }
@@ -138,7 +147,7 @@ code { font-size: 0.8em; background: var(--accent-soft); padding: 1px 4px; borde
 .chips .chip[aria-pressed] { text-transform: capitalize; }
 .check-row { display: flex; gap: 8px; align-items: flex-start; font-size: 0.82rem; margin-bottom: 4px; }
 .check-row input { margin-top: 3px; }
-.quick { display: flex; gap: 12px; align-items: center; font-size: 0.8rem; margin-bottom: 8px; }
+.quick { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font-size: 0.8rem; margin-bottom: 8px; }
 .quick .muted { margin: 0; font-size: 0.8rem; }
 .th-sort { border: 0; background: none; padding: 0; font-weight: 600; color: var(--muted); }
 .score { display: inline-block; min-width: 34px; text-align: center; font-weight: 700; font-size: 0.78rem; padding: 2px 6px; border-radius: 6px; cursor: help; }

@@ -1,14 +1,67 @@
-import { useMemo, useState } from 'react';
-import { brandMatcher, promptKey } from '../utils.js';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { brandMatcher, promptKey, storage } from '../utils.js';
 
-const PAGE = 100;
+const PAGE_SIZES = [25, 50, 100, 200];
+const DEFAULT_PAGE_SIZE = 50;
 const INTENT_LIST = ['informational', 'commercial', 'transactional', 'comparison', 'local', 'review', 'navigational'];
 const gradeOf = (s) => (s >= 85 ? 'A' : s >= 70 ? 'B' : s >= 50 ? 'C' : 'D');
+
+/** Page indexes to show: first, last, and the current page ± 1, with gaps as '…'. */
+function pageList(current, pages) {
+  const keep = [...new Set([0, current - 1, current, current + 1, pages - 1])].filter((p) => p >= 0 && p < pages).sort((a, b) => a - b);
+  const out = [];
+  keep.forEach((p, i) => {
+    const prev = keep[i - 1];
+    if (i && p - prev === 2) out.push(prev + 1); // a gap of one page: show the page itself
+    else if (i && p - prev > 2) out.push(`gap-${p}`);
+    out.push(p);
+  });
+  return out;
+}
+
+function Pager({ current, pages, pageSize, total, onPage, onPageSize, className = '' }) {
+  const from = total ? current * pageSize + 1 : 0;
+  const to = Math.min(total, (current + 1) * pageSize);
+  return (
+    <nav className={`pager ${className}`} aria-label="Result pages">
+      <span className="range">{from}–{to} of {total}</span>
+      {pages > 1 && (
+        <div className="pages">
+          <button type="button" disabled={current === 0} onClick={() => onPage(current - 1)} aria-label="Previous page">‹</button>
+          {pageList(current, pages).map((p) => (typeof p === 'string'
+            ? <span key={p} className="gap">…</span>
+            : (
+              <button type="button" key={p} className={p === current ? 'on' : ''} aria-current={p === current ? 'page' : undefined}
+                onClick={() => onPage(p)}>
+                {p + 1}
+              </button>
+            )))}
+          <button type="button" disabled={current >= pages - 1} onClick={() => onPage(current + 1)} aria-label="Next page">›</button>
+        </div>
+      )}
+      {onPageSize && (
+        <label className="per-page">
+          Rows
+          <select value={pageSize} onChange={(e) => onPageSize(Number(e.target.value))}>
+            {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </label>
+      )}
+    </nav>
+  );
+}
 
 export default function ResultsTable({ run, meta, prompts, setPrompts, onSave, onExport, dirty, saving, exporting }) {
   const [filter, setFilter] = useState({ q: '', category: '', intent: '', sentiment: '', keyword: '', language: '', grade: '' });
   const [sortByScore, setSortByScore] = useState(false);
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(() => {
+    const saved = storage.get('pg_page_size', DEFAULT_PAGE_SIZE);
+    return PAGE_SIZES.includes(saved) ? saved : DEFAULT_PAGE_SIZE;
+  });
+  const tableRef = useRef(null);
+
+  useEffect(() => { setPage(0); }, [run?.id]); // a different run starts on page 1
   const [editing, setEditing] = useState(null);
   const [custom, setCustom] = useState({ text: '', keyword: '' });
   const [note, setNote] = useState('');
@@ -39,9 +92,21 @@ export default function ResultsTable({ run, meta, prompts, setPrompts, onSave, o
     return sortByScore ? [...list].sort((a, b) => (b.score ?? -1) - (a.score ?? -1)) : list;
   }, [prompts, filter, sortByScore, multiLanguage]);
 
-  const pages = Math.max(1, Math.ceil(filtered.length / PAGE));
+  const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const current = Math.min(page, pages - 1);
-  const visible = filtered.slice(current * PAGE, current * PAGE + PAGE);
+  const visible = filtered.slice(current * pageSize, current * pageSize + pageSize);
+
+  const goTo = (p, { scroll = false } = {}) => {
+    setPage(Math.max(0, Math.min(pages - 1, p)));
+    if (scroll) tableRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  };
+  // Keep the first row on screen in view when the page size changes.
+  const changePageSize = (size) => {
+    setPage(Math.floor((current * pageSize) / size));
+    setPageSize(size);
+    storage.set('pg_page_size', size);
+  };
+  const pagerProps = { current, pages, pageSize, total: filtered.length };
   const selectedCount = prompts.filter((p) => p.selected).length;
   const allFilteredSelected = filtered.length > 0 && filtered.every((p) => p.selected);
   const scored = prompts.filter((p) => typeof p.score === 'number');
@@ -149,15 +214,16 @@ export default function ResultsTable({ run, meta, prompts, setPrompts, onSave, o
         <button type="button" className="link" onClick={() => selectAbove(0)}>all</button>
         <button type="button" className="link" onClick={() => selectAbove(70)}>score 70+</button>
         <button type="button" className="link" onClick={() => selectAbove(85)}>score 85+</button>
+        <Pager {...pagerProps} onPage={(p) => goTo(p)} onPageSize={changePageSize} className="top" />
       </div>
 
-      <div className="table-wrap">
+      <div className="table-wrap" ref={tableRef}>
         <table>
           <thead>
             <tr>
-              <th className="check"><input type="checkbox" checked={allFilteredSelected} onChange={toggleAll} aria-label="Select all shown" /></th>
+              <th className="check"><input type="checkbox" checked={allFilteredSelected} onChange={toggleAll} aria-label="Select all matching prompts (every page)" title="Select all matching prompts, on every page" /></th>
               <th>Prompt</th><th>Keyword</th><th>Category</th><th>Intent</th><th>Sentiment</th>
-              <th><button type="button" className="th-sort" onClick={() => setSortByScore((s) => !s)} aria-pressed={sortByScore}>Score {sortByScore ? '↓' : '↕'}</button></th>
+              <th><button type="button" className="th-sort" onClick={() => { setSortByScore((s) => !s); setPage(0); }} aria-pressed={sortByScore}>Score {sortByScore ? '↓' : '↕'}</button></th>
               <th />
             </tr>
           </thead>
@@ -203,13 +269,7 @@ export default function ResultsTable({ run, meta, prompts, setPrompts, onSave, o
         </table>
       </div>
 
-      {pages > 1 && (
-        <div className="pager">
-          <button type="button" disabled={current === 0} onClick={() => setPage(current - 1)}>‹ Prev</button>
-          <span>Page {current + 1} of {pages} · {filtered.length} shown</span>
-          <button type="button" disabled={current >= pages - 1} onClick={() => setPage(current + 1)}>Next ›</button>
-        </div>
-      )}
+      {pages > 1 && <Pager {...pagerProps} onPage={(p) => goTo(p, { scroll: true })} className="bottom" />}
     </div>
   );
 }
