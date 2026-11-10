@@ -1,4 +1,5 @@
 # Prompt Generation Engine
+An AI-powered platform that converts brand intelligence, keywords and user-defined instructions into relevant, high-quality prompts at scale, with automated generation, multi-model support and scalable processing infrastructure.
 
 A reusable engine that turns a **brand profile, keywords and instructions** into the prompts real customers type into AI assistants, then categorizes, scores and exports them. It ships as:
 
