@@ -11,7 +11,7 @@
   ],
   "scripts": {
     "dev": "concurrently -n api,web -c blue,green \"npm run dev -w server\" \"npm run dev -w client\"",
-    "build": "npm run build -w client",
+    "build": "npm run build -w client && node -e \"require('fs').cpSync('client/dist','dist',{recursive:true})\"",
     "start": "npm start -w server",
     "test": "npm test -w packages/engine -w packages/providers -w server"
   },

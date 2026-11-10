@@ -33,7 +33,14 @@ export default function App() {
   const refreshRuns = useCallback(() => api.runs().then(setRuns).catch(() => {}), []);
 
   useEffect(() => {
-    api.meta().then(setMeta).catch((err) => setError(err.message.includes('API key') ? err.message : 'Cannot reach the API. Is the server running on port 5000?'));
+    api.meta().then(setMeta).catch((err) => {
+      if (err.message.includes('API key')) return setError(err.message);
+      const local = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+      setError(local
+        ? `Cannot reach the API (${err.message}). Is the server running on port 5000?`
+        : `Cannot reach the API at /api/v1 (${err.message}). This deployment is serving the UI without the API: ` +
+          'in Vercel, set the project Root Directory to the repository root (not "client") and redeploy.');
+    });
     refreshRuns();
     return () => clearTimeout(pollRef.current);
   }, [refreshRuns]);
