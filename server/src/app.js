@@ -34,7 +34,7 @@ export function createApp({ env = process.env, registry = createProviderRegistry
   app.use('/api/v1', apiKeyAuth(config.apiKeys), rateLimit({ perMinute: config.rateLimitPerMinute }), v1);
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found. The API lives under /api/v1.' }));
 
-  const dist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../client/dist');
+  const dist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../dist');
   if (fs.existsSync(dist)) {
     app.use(express.static(dist));
     app.get(/^\/(?!api).*/, (_req, res) => res.sendFile(path.join(dist, 'index.html')));

@@ -3,7 +3,7 @@
 One Vercel project serves both halves from the same domain:
 
 ```
-https://prompt-generator-di6c.vercel.app/          → React UI (static files from client/dist)
+https://prompt-generator-di6c.vercel.app/          → React UI (static files from dist/)
 https://prompt-generator-di6c.vercel.app/api/v1/*  → Express API (serverless function api/index.js)
 ```
 
