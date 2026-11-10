@@ -42,6 +42,7 @@ export function createV1Router({ registry, config }) {
       providers: registry.list(),
       defaultProvider: registry.defaultId(),
       store: storeKind(),
+      serverless: config.serverless,
     });
   });
 
@@ -112,9 +113,21 @@ export function createV1Router({ registry, config }) {
   }));
 
   router.get('/runs/:id', asyncRoute(async (req, res) => {
-    const run = await getRun(req.params.id);
+    let run = await getRun(req.params.id);
     if (!run) return res.status(404).json({ error: 'Run not found' });
-    if (run.status === 'queued' || run.status === 'running') return res.json({ ...run, prompts: [], progress: jobProgress(run.id) });
+    if (['queued', 'running', 'cancelling'].includes(run.status)) {
+      // A run whose progress stopped moving was killed (serverless time limit, crash, redeploy).
+      const lastBeat = run.progress?.updatedAt || new Date(run.updatedAt || run.createdAt).getTime();
+      if (Date.now() - lastBeat > config.staleRunMs) {
+        run = await updateRun(run.id, {
+          status: 'failed',
+          error: 'The run stopped responding (likely the server time limit). Try fewer keywords per run.',
+          progress: null,
+        });
+        return res.json(run);
+      }
+      return res.json({ ...run, prompts: [], progress: jobProgress(run.id) || run.progress || null });
+    }
     res.json(run);
   }));
 
@@ -122,7 +135,7 @@ export function createV1Router({ registry, config }) {
     const run = await getRun(req.params.id);
     if (!run) return res.status(404).json({ error: 'Run not found' });
     if (!['queued', 'running'].includes(run.status)) return res.status(409).json({ error: `Run is already ${run.status}` });
-    cancelRun(run.id);
+    await cancelRun(run.id);
     if (run.status === 'queued') await updateRun(run.id, { status: 'cancelled', error: 'Cancelled' });
     res.json({ ok: true });
   }));
@@ -154,7 +167,7 @@ export function createV1Router({ registry, config }) {
   }));
 
   router.delete('/runs/:id', asyncRoute(async (req, res) => {
-    cancelRun(req.params.id);
+    await cancelRun(req.params.id).catch(() => {});
     res.status((await deleteRun(req.params.id)) ? 204 : 404).end();
   }));
 

@@ -1,6 +1,8 @@
 // Client for the engine's public API (/api/v1). The web UI uses exactly the
 // same endpoints other applications do.
-const BASE = '/api/v1';
+// Same-origin by default (Vercel serves the UI and /api from one project; Vite
+// proxies /api in dev). Set VITE_API_BASE_URL only if the API lives on another domain.
+const BASE = `${(import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')}/api/v1`;
 const KEY = import.meta.env.VITE_ENGINE_API_KEY;
 
 const headers = () => ({

@@ -47,7 +47,7 @@ export default function App() {
   const poll = useCallback((id) => {
     clearTimeout(pollRef.current);
     api.run(id).then((data) => {
-      if (data.status === 'queued' || data.status === 'running') {
+      if (['queued', 'running', 'cancelling'].includes(data.status)) {
         setProgress({ ...(data.progress || {}), status: data.status });
         pollRef.current = setTimeout(() => poll(id), 800);
         return;
@@ -154,6 +154,12 @@ export default function App() {
         )}
       </header>
 
+      {meta?.serverless && meta.store === 'memory' && (
+        <div className="alert" role="alert">
+          The live server has no database (MONGODB_URI is not set), so runs can disappear between requests.
+          Add MONGODB_URI in the Vercel project settings and redeploy.
+        </div>
+      )}
       {error && <div className="alert" role="alert">{error}<button type="button" className="icon" aria-label="Dismiss" onClick={() => setError('')}>✕</button></div>}
 
       <main>

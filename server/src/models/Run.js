@@ -24,7 +24,7 @@ const PromptSchema = new mongoose.Schema(
 const RunSchema = new mongoose.Schema(
   {
     name: String,
-    status: { type: String, enum: ['queued', 'running', 'done', 'failed', 'cancelled'], default: 'queued' },
+    status: { type: String, enum: ['queued', 'running', 'cancelling', 'done', 'failed', 'cancelled'], default: 'queued' },
     origin: { type: String, default: 'ui' }, // ui | api
     settings: { type: mongoose.Schema.Types.Mixed, required: true },
     keywords: [String],
@@ -37,6 +37,7 @@ const RunSchema = new mongoose.Schema(
     model: String,
     warnings: [String],
     log: [{ at: String, msg: String, _id: false }],
+    progress: mongoose.Schema.Types.Mixed, // live counters while running; null when finished
     error: String,
   },
   { timestamps: true },

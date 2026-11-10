@@ -16,6 +16,10 @@ export function loadConfig(env = process.env) {
     concurrency: Number(env.AGENT_CONCURRENCY) || 3,
     maxJobs: Number(env.MAX_CONCURRENT_RUNS) || 2,
     maxSyncPrompts: Number(env.MAX_SYNC_PROMPTS) || 500,
+    serverless: Boolean(env.VERCEL),
+    // Runs with no progress for this long are marked failed. Keep it above the
+    // function's maxDuration on serverless (300 s in vercel.json).
+    staleRunMs: Number(env.STALE_RUN_MS) || 6 * 60_000,
   };
 }
 
