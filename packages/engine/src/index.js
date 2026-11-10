@@ -18,7 +18,40 @@ import { scorePrompts } from './modules/qualityScoring.js';
 import {
   AnalyzeBrandSchema, EngineValidationError, ExtractKeywordsSchema, ScoreSchema, normalizeBrand, normalizeGenerateRequest, parse,
 } from './schema.js';
-import { uniqueStrings } from './text.js';
+import { promptKey, uniqueStrings } from './text.js';
+
+/** Merge per-language results into one: concatenated prompts, summed counters, recomputed totals. */
+function mergeLanguageResults(results) {
+  const seen = new Set();
+  const prompts = [];
+  const stats = {};
+  let crossDuplicates = 0;
+  for (const r of results) {
+    for (const [k, v] of Object.entries(r.stats)) if (typeof v === 'number') stats[k] = (stats[k] || 0) + v;
+    for (const p of r.prompts) {
+      const key = promptKey(p.text);
+      if (seen.has(key)) { crossDuplicates++; continue; } // e.g. English fallbacks repeated in every language
+      seen.add(key);
+      prompts.push(p);
+    }
+  }
+  const byLanguage = {};
+  for (const p of prompts) byLanguage[p.language] = (byLanguage[p.language] || 0) + 1;
+  return {
+    prompts,
+    target: results.reduce((a, r) => a + r.target, 0),
+    log: results.flatMap((r) => r.log),
+    stats: {
+      ...stats,
+      duplicates: (stats.duplicates || 0) + crossDuplicates,
+      total: prompts.length,
+      branded: prompts.filter((p) => p.category === 'Branded').length,
+      nonBranded: prompts.filter((p) => p.category === 'Non-branded').length,
+      averageScore: prompts.length ? Math.round(prompts.reduce((a, p) => a + p.score, 0) / prompts.length) : 0,
+      byLanguage,
+    },
+  };
+}
 
 export * from './constants.js';
 export { EngineValidationError, GenerateSchema, AnalyzeBrandSchema, ExtractKeywordsSchema, ScoreSchema } from './schema.js';
@@ -87,8 +120,11 @@ export function createPromptEngine(options = {}) {
       const say = (msg) => hooks.onProgress?.({ log: msg });
       let profile = null;
       let signals = null;
-      if (!llm && settings.language !== 'English') {
-        warnings.push(`No AI provider is configured, so prompts were written in English from templates. Configure a provider to generate ${settings.language} prompts.`);
+      if (!llm && settings.languages.some((l) => l !== 'English')) {
+        const others = settings.languages.filter((l) => l !== 'English').join(', ');
+        warnings.push(`No AI provider is configured, so prompts were written in English from templates. Configure a provider to generate ${others} prompts.`);
+        settings.languages = ['English']; // templates would only repeat the same English prompts per language
+        settings.language = 'English';
       }
 
       const needAnalysis = settings.brand.website && (settings.analyzeWebsite || !settings.keywords.length);
@@ -112,9 +148,29 @@ export function createPromptEngine(options = {}) {
       }
 
       settings.profile = profile;
-      const result = await generateRecommendations(settings, {
-        llm, usage, concurrency, onProgress: hooks.onProgress, signal: hooks.signal,
-      });
+      // One full pass per language, one after another, so provider load stays at `concurrency`.
+      const { languages } = settings;
+      const perLanguage = settings.keywords.length * settings.promptsPerKeyword;
+      const results = [];
+      for (const [i, language] of languages.entries()) {
+        const multi = languages.length > 1;
+        if (multi) say(`Language ${i + 1}/${languages.length}: ${language}`);
+        const before = results.reduce((a, r) => a + r.prompts.length, 0);
+        results.push(await generateRecommendations({ ...settings, language }, {
+          llm,
+          usage,
+          concurrency,
+          signal: hooks.signal,
+          onProgress: (p) => {
+            if (!hooks.onProgress) return;
+            if (p.log) return hooks.onProgress({ log: multi ? `[${language}] ${p.log}` : p.log });
+            hooks.onProgress(multi
+              ? { ...p, generated: before + p.generated, target: perLanguage * languages.length, language, languageIndex: i, languages: languages.length }
+              : p);
+          },
+        }));
+      }
+      const result = results.length === 1 ? results[0] : mergeLanguageResults(results);
       const { profile: _p, ...publicSettings } = settings;
       return {
         prompts: result.prompts,

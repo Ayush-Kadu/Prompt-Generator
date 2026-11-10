@@ -62,7 +62,7 @@ export async function buildWorkbook({ run, prompts }) {
   };
   const avg = prompts.length ? Math.round(prompts.reduce((a, p) => a + (p.score || 0), 0) / prompts.length) : 0;
   sum.addRow({ g: 'Total', v: '', c: prompts.length, a: avg });
-  for (const field of ['category', 'intent', 'sentiment', 'grade', 'keyword']) {
+  for (const field of ['category', 'intent', 'sentiment', 'grade', 'language', 'keyword']) {
     for (const [v, e] of groupBy(field)) sum.addRow({ g: field[0].toUpperCase() + field.slice(1), v, c: e.c, a: Math.round(e.t / e.c) });
   }
   styleHeader(sum);
@@ -77,7 +77,7 @@ export async function buildWorkbook({ run, prompts }) {
     ['Brand mode', s.brandMode === 'mixed' ? `mixed (${s.brandedRatio}% branded)` : s.brandMode],
     ['Intents', (s.intents?.length ? s.intents : Object.keys(INTENTS)).join(', ')],
     ['Sentiment', s.sentiment], ['Topic', s.topic], ['Context', s.context], ['Instruction', s.instruction],
-    ['Location', s.location], ['Language', s.language], ['Prompts per keyword', s.promptsPerKeyword],
+    ['Location', s.location], ['Languages', (s.languages?.length ? s.languages : [s.language]).filter(Boolean).join(', ')], ['Prompts per keyword', s.promptsPerKeyword],
     ['Min quality score', s.minQualityScore], ['Keywords', (run?.keywords || s.keywords || []).length],
     ['Provider / model', run?.provider ? `${run.provider} / ${run.model}` : ''],
     ['LLM calls / tokens', run?.usage ? `${run.usage.calls} calls · ${run.usage.inputTokens} in / ${run.usage.outputTokens} out` : ''],

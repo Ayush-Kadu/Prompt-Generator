@@ -58,6 +58,37 @@ test('offline mode generates, categorizes and scores without any llm', async () 
   assert.ok(r.prompts.every((p) => p.source === 'template'));
 });
 
+test('multiple languages: full set per language, tagged, counted and limited', async () => {
+  // Fake model that writes in whatever language the batch asks for.
+  const llm = async ({ user }) => {
+    const lang = /Write every prompt in (.+)\./.exec(user)[1];
+    const kws = [...user.matchAll(/^\d+\. (.+)$/gm)].map((m) => m[1]);
+    const prompts = kws.flatMap((k) => [1, 2, 3].map((i) => ({ keyword: k, prompt: `which ${k} option suits use case ${i} for ${lang} speakers?` })));
+    return { text: JSON.stringify({ prompts }) };
+  };
+  const progress = [];
+  const r = await createPromptEngine({ llm }).generate(
+    { keywords: ['crm software', 'email tools'], promptsPerKeyword: 3, languages: ['English', 'Hindi', 'English'] },
+    { onProgress: (p) => { if (!p.log) progress.push(p); } },
+  );
+  assert.deepEqual(r.settings.languages, ['English', 'Hindi']);
+  assert.equal(r.target, 12);
+  assert.equal(r.prompts.length, 12);
+  assert.deepEqual(r.stats.byLanguage, { English: 6, Hindi: 6 });
+  assert.ok(r.prompts.filter((p) => p.language === 'Hindi').every((p) => p.text.includes('Hindi')));
+  assert.deepEqual([progress.at(-1).generated, progress.at(-1).target], [12, 12]);
+
+  const many = { keywords: Array.from({ length: 1000 }, (_, i) => `k${i}`), promptsPerKeyword: 5, languages: ['English', 'Hindi', 'Marathi'] };
+  await assert.rejects(createPromptEngine({ llm }).generate(many), /15000 prompts/);
+});
+
+test('offline mode collapses multiple languages to English with a warning', async () => {
+  const r = await createPromptEngine().generate({ keywords: ['cupcakes'], promptsPerKeyword: 3, languages: ['Hindi', 'English'] });
+  assert.equal(r.prompts.length, 3);
+  assert.ok(r.prompts.every((p) => p.language === 'English'));
+  assert.match(r.warnings.join(), /Hindi/);
+});
+
 test('generation: drops brand leaks, dedupes, tops up, tracks usage', async () => {
   let call = 0;
   const llm = reply(() => {

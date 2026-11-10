@@ -27,7 +27,9 @@ export default function GeneratorForm({ meta, form, setForm, onSubmit, busy, onE
 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
   const keywords = uniqueKeywords(form.keywords);
-  const total = keywords.length * (Number(form.promptsPerKeyword) || 0);
+  const allLanguages = meta?.languages || FALLBACK_LANGUAGES;
+  const languages = form.languages?.length ? form.languages : ['English'];
+  const total = keywords.length * (Number(form.promptsPerKeyword) || 0) * languages.length;
   const limits = meta?.limits || { maxKeywords: 2000, maxPerKeyword: 25, maxTotalPrompts: 10000, maxInstruction: 500, maxContext: 1500 };
   const needsBrand = form.brandMode !== 'non-branded';
   const tooMany = total > limits.maxTotalPrompts || keywords.length > limits.maxKeywords;
@@ -70,7 +72,7 @@ export default function GeneratorForm({ meta, form, setForm, onSubmit, busy, onE
     try {
       const r = await api.extractKeywords({
         brand: brandBody(), analyzeWebsite: Boolean(form.brandWebsite), seedKeywords: keywords.slice(0, 50),
-        limit: 30, instruction: form.instruction, language: form.language, ...llmBody,
+        limit: 30, instruction: form.instruction, language: languages[0], ...llmBody,
       });
       const existing = new Set(keywords.map((k) => k.toLowerCase()));
       setSuggested(r.keywords.map((k) => k.keyword).filter((k) => !existing.has(k.toLowerCase())));
@@ -115,6 +117,12 @@ export default function GeneratorForm({ meta, form, setForm, onSubmit, busy, onE
 
   const toggleIntent = (i) =>
     set({ intents: form.intents.includes(i) ? form.intents.filter((x) => x !== i) : [...form.intents, i] });
+
+  // At least one language stays selected; the list keeps the catalogue order.
+  const toggleLanguage = (l) => {
+    const next = languages.includes(l) ? languages.filter((x) => x !== l) : [...languages, l];
+    if (next.length) set({ languages: allLanguages.filter((x) => next.includes(x)) });
+  };
 
   const submit = (e) => {
     e.preventDefault();
@@ -227,7 +235,8 @@ export default function GeneratorForm({ meta, form, setForm, onSubmit, busy, onE
             </div>
           )}
           <small className={tooMany ? 'error' : ''}>
-            {keywords.length} unique keyword{keywords.length === 1 ? '' : 's'} × {form.promptsPerKeyword} = <b>{total}</b> prompts
+            {keywords.length} unique keyword{keywords.length === 1 ? '' : 's'} × {form.promptsPerKeyword}
+            {languages.length > 1 ? ` × ${languages.length} languages` : ''} = <b>{total}</b> prompts
             {tooMany && ` — over the limit of ${limits.maxTotalPrompts} prompts / ${limits.maxKeywords} keywords`}
           </small>
         </div>
@@ -276,12 +285,21 @@ export default function GeneratorForm({ meta, form, setForm, onSubmit, busy, onE
             <span>Location <em>optional</em></span>
             <input value={form.location} maxLength={100} placeholder="Gurgaon, India" onChange={(e) => set({ location: e.target.value })} />
           </label>
-          <label className="field">
-            <span>Language</span>
-            <select value={form.language} onChange={(e) => set({ language: e.target.value })}>
-              {(meta?.languages || FALLBACK_LANGUAGES).map((l) => <option key={l}>{l}</option>)}
-            </select>
-          </label>
+        </div>
+
+        <div className="field">
+          <span>Languages <em>{languages.length === 1 ? languages[0] : `${languages.length} selected · full set in each`}</em></span>
+          <div className="chips">
+            {allLanguages.map((l) => (
+              <button type="button" key={l} aria-pressed={languages.includes(l)}
+                className={languages.includes(l) ? 'chip on' : 'chip'} onClick={() => toggleLanguage(l)}>
+                {l}
+              </button>
+            ))}
+          </div>
+          {provider.id === 'offline' && languages.some((l) => l !== 'English') && (
+            <small>Offline templates are English only. Pick an AI provider for other languages.</small>
+          )}
         </div>
 
         <label className="field">

@@ -30,6 +30,7 @@ Every endpoint that calls a model accepts optional `"provider"` and `"model"`:
 | `sentiment` | `neutral` \| `positive` \| `negative` \| `mixed` | `neutral` | |
 | `topic`, `location` | string | | |
 | `language` | string | `English` | See `GET /meta` → `languages` |
+| `languages` | string[] | `[]` | Several languages: the full set is generated once per language (`promptsPerKeyword` × keywords × languages, counted against the limits). Overrides `language` when non-empty. `stats.byLanguage` gives the split |
 | `context` | string ≤1500 | | Background about the business (sandboxed) |
 | `instruction` | string ≤500 | | Steering, e.g. "focus on pricing" (sandboxed) |
 | `promptsPerKeyword` | 1–25 | 5 | |

@@ -56,6 +56,8 @@ export const GenerateSchema = z.object({
   instruction: text(LIMITS.maxInstruction),
   location: text(100),
   language: z.enum(LANGUAGES).default('English'),
+  /** Generate the full set once per language. Overrides `language` when non-empty. */
+  languages: z.array(z.enum(LANGUAGES)).max(LANGUAGES.length).optional().default([]),
   promptsPerKeyword: z.number().int().min(1).max(LIMITS.maxPerKeyword).default(5),
   /** Prompts scoring below this are rejected and re-requested (0 keeps all). */
   minQualityScore: z.number().int().min(0).max(100).default(0),
@@ -112,14 +114,17 @@ export function normalizeGenerateRequest(input) {
     throw new EngineValidationError(['autoKeywords needs brand.website, brand.description or brand.industry']);
   }
   if (r.brandMode !== 'non-branded' && !brand.name) throw new EngineValidationError(['brand.name: required for branded and mixed modes']);
-  const expected = (keywords.length || r.autoKeywords) * r.promptsPerKeyword;
+  const languages = r.languages.length ? [...new Set(r.languages)] : [r.language];
+  const expected = (keywords.length || r.autoKeywords) * r.promptsPerKeyword * languages.length;
   if (expected > LIMITS.maxTotalPrompts) {
-    throw new EngineValidationError([`That is ${expected} prompts; the limit is ${LIMITS.maxTotalPrompts}. Reduce keywords or prompts per keyword.`]);
+    throw new EngineValidationError([`That is ${expected} prompts; the limit is ${LIMITS.maxTotalPrompts}. Reduce keywords, prompts per keyword or languages.`]);
   }
   return {
     ...r,
     brand,
     keywords,
+    languages,
+    language: languages[0],
     intents: [...new Set(r.intents)],
     topic: normalizeInstruction(r.topic, 200) || '',
     context: normalizeInstruction(r.context, LIMITS.maxContext),

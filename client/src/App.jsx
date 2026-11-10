@@ -10,12 +10,19 @@ const DEFAULT_FORM = {
   name: '', keywords: '', promptsPerKeyword: 5, minQualityScore: 0,
   brandName: '', brandWebsite: '', brandIndustry: '', brandDescription: '', brandAliases: '', competitors: '',
   brandMode: 'non-branded', brandedRatio: 30, analyzeWebsite: false,
-  intents: [], sentiment: 'neutral', topic: '', location: '', language: 'English', instruction: '',
+  intents: [], sentiment: 'neutral', topic: '', location: '', languages: ['English'], instruction: '',
 };
+
+/** Saved form, upgraded from the single `language` field used before multi-language support. */
+function loadForm() {
+  const { language, ...saved } = storage.get('pg_form_v2', {});
+  const languages = Array.isArray(saved.languages) && saved.languages.length ? saved.languages : [language || 'English'];
+  return { ...DEFAULT_FORM, ...saved, languages };
+}
 
 export default function App() {
   const [meta, setMeta] = useState(null);
-  const [form, setForm] = useState(() => ({ ...DEFAULT_FORM, ...storage.get('pg_form_v2', {}) }));
+  const [form, setForm] = useState(loadForm);
   const [runs, setRuns] = useState([]);
   const [run, setRun] = useState(null);
   const [prompts, setPrompts] = useState([]);
@@ -94,7 +101,7 @@ export default function App() {
         sentiment: form.sentiment,
         topic: form.topic,
         location: form.location,
-        language: form.language,
+        languages: form.languages,
         context: form.brandDescription,
         instruction: form.instruction,
         promptsPerKeyword: Number(form.promptsPerKeyword),
@@ -185,6 +192,7 @@ export default function App() {
               <div className="bar"><div style={{ width: `${pct}%` }} /></div>
               <p className="muted">
                 {progress.generated ?? 0} / {progress.target || '…'} prompts
+                {progress.languages > 1 ? ` · ${progress.language} (${progress.languageIndex + 1}/${progress.languages})` : ''}
                 {progress.total ? ` · ${progress.round ? `top-up round ${progress.round}, ` : ''}batch ${progress.done}/${progress.total}` : ''}
               </p>
               <ul className="log">{(progress.log || []).slice(-6).map((l, i) => <li key={i}>{l}</li>)}</ul>

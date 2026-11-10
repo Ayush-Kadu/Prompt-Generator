@@ -6,7 +6,7 @@ const INTENT_LIST = ['informational', 'commercial', 'transactional', 'comparison
 const gradeOf = (s) => (s >= 85 ? 'A' : s >= 70 ? 'B' : s >= 50 ? 'C' : 'D');
 
 export default function ResultsTable({ run, meta, prompts, setPrompts, onSave, onExport, dirty, saving, exporting }) {
-  const [filter, setFilter] = useState({ q: '', category: '', intent: '', sentiment: '', keyword: '', grade: '' });
+  const [filter, setFilter] = useState({ q: '', category: '', intent: '', sentiment: '', keyword: '', language: '', grade: '' });
   const [sortByScore, setSortByScore] = useState(false);
   const [page, setPage] = useState(0);
   const [editing, setEditing] = useState(null);
@@ -22,8 +22,9 @@ export default function ResultsTable({ run, meta, prompts, setPrompts, onSave, o
 
   const options = useMemo(() => {
     const uniq = (f) => [...new Set(prompts.map((p) => p[f]).filter(Boolean))].sort();
-    return { intent: uniq('intent'), sentiment: uniq('sentiment'), keyword: uniq('keyword') };
+    return { intent: uniq('intent'), sentiment: uniq('sentiment'), keyword: uniq('keyword'), language: uniq('language') };
   }, [prompts]);
+  const multiLanguage = options.language.length > 1;
 
   const filtered = useMemo(() => {
     const q = filter.q.toLowerCase();
@@ -33,9 +34,10 @@ export default function ResultsTable({ run, meta, prompts, setPrompts, onSave, o
       (!filter.intent || p.intent === filter.intent) &&
       (!filter.sentiment || p.sentiment === filter.sentiment) &&
       (!filter.keyword || p.keyword === filter.keyword) &&
+      (!multiLanguage || !filter.language || p.language === filter.language) &&
       (!filter.grade || p.grade === filter.grade));
     return sortByScore ? [...list].sort((a, b) => (b.score ?? -1) - (a.score ?? -1)) : list;
-  }, [prompts, filter, sortByScore]);
+  }, [prompts, filter, sortByScore, multiLanguage]);
 
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE));
   const current = Math.min(page, pages - 1);
@@ -132,9 +134,9 @@ export default function ResultsTable({ run, meta, prompts, setPrompts, onSave, o
         <select value={filter.category} aria-label="Category" onChange={(e) => setF({ category: e.target.value })}>
           <option value="">All categories</option><option>Non-branded</option><option>Branded</option>
         </select>
-        {['intent', 'sentiment', 'keyword'].map((f) => (
+        {['intent', 'sentiment', 'keyword', ...(multiLanguage ? ['language'] : [])].map((f) => (
           <select key={f} value={filter[f]} aria-label={f} onChange={(e) => setF({ [f]: e.target.value })}>
-            <option value="">All {f === 'keyword' ? 'keywords' : `${f}s`}</option>
+            <option value="">All {f}s</option>
             {options[f].map((o) => <option key={o}>{o}</option>)}
           </select>
         ))}
@@ -173,6 +175,7 @@ export default function ResultsTable({ run, meta, prompts, setPrompts, onSave, o
                   ) : (
                     <span onDoubleClick={() => setEditing({ id: p.id, text: p.text })}>{p.text}</span>
                   )}
+                  {multiLanguage && <span className="tag">{p.language}</span>}
                   {p.source !== 'ai' && <span className="tag">{p.source}</span>}
                 </td>
                 <td>{p.keyword}</td>
