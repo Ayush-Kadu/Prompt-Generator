@@ -77,7 +77,8 @@ export async function buildWorkbook({ run, prompts }) {
     ['Brand mode', s.brandMode === 'mixed' ? `mixed (${s.brandedRatio}% branded)` : s.brandMode],
     ['Intents', (s.intents?.length ? s.intents : Object.keys(INTENTS)).join(', ')],
     ['Sentiment', s.sentiment], ['Topic', s.topic], ['Context', s.context], ['Instruction', s.instruction],
-    ['Location', s.location], ['Languages', (s.languages?.length ? s.languages : [s.language]).filter(Boolean).join(', ')], ['Prompts per keyword', s.promptsPerKeyword],
+    ['Location', s.location], ['Languages', (s.languages?.length ? s.languages : [s.language]).filter(Boolean).join(', ')], ['Prompts per keyword', s.promptsPerKeyword + (Object.keys(s.promptsByKeyword || {}).length
+      ? ` (default; ${Object.keys(s.promptsByKeyword).length} keyword(s) have their own count, see the Summary sheet)` : '')],
     ['Min quality score', s.minQualityScore], ['Keywords', (run?.keywords || s.keywords || []).length],
     ['Provider / model', run?.provider ? `${run.provider} / ${run.model}` : ''],
     ['LLM calls / tokens', run?.usage ? `${run.usage.calls} calls · ${run.usage.inputTokens} in / ${run.usage.outputTokens} out` : ''],

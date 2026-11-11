@@ -78,6 +78,7 @@ test('async run → poll → edit → export xlsx/csv', async (t) => {
   }
   assert.equal(run.status, 'done', run.error);
   assert.equal(run.prompts.length, 12);
+  assert.equal(run.target, 12);
   assert.equal(run.prompts[0].language, 'Marathi');
 
   run.prompts[0].selected = false;
@@ -109,6 +110,14 @@ test('keywords import reads an .xlsx sheet (Keyword column, dedupe) and rejects 
   assert.deepEqual(r.keywords, ['custom cakes', 'Eggless cakes', 'birthday cakes']);
   assert.equal(r.sheet, 'Keywords');
   assert.equal(r.truncated, false);
+  assert.deepEqual(r.counts, {}); // no count column
+
+  // A "Prompts" column gives per-keyword counts (whole numbers only, capped at 25).
+  const withCounts = new ExcelJS.Workbook();
+  withCounts.addWorksheet('Plan').addRows([['Keyword', 'Prompts'], ['custom cakes', 10], ['cupcakes', 'n/a'], ['eggless cakes', 40]]);
+  const c = await (await upload(await withCounts.xlsx.writeBuffer(), 'application/octet-stream')).json();
+  assert.deepEqual(c.keywords, ['custom cakes', 'cupcakes', 'eggless cakes']);
+  assert.deepEqual(c.counts, { 'custom cakes': 10, 'eggless cakes': 25 });
 
   // No header row: the first column is used as-is.
   const plain = new ExcelJS.Workbook();
@@ -117,6 +126,29 @@ test('keywords import reads an .xlsx sheet (Keyword column, dedupe) and rejects 
 
   assert.equal((await upload('not a workbook', 'application/octet-stream')).status, 400);
   assert.equal((await upload(JSON.stringify({ keywords: ['x'] }), 'application/json')).status, 400);
+});
+
+test('async run honours per-keyword counts; sync size check counts them too', async (t) => {
+  const { server, call } = await start();
+  t.after(() => server.close());
+  const body = { keywords: ['crm software', 'email tools'], promptsPerKeyword: 2, promptsByKeyword: { 'email tools': 5 } };
+  const started = await (await call('/runs', { method: 'POST', body })).json();
+  assert.equal(started.target, 7);
+  let run;
+  for (let i = 0; i < 50; i++) {
+    run = await (await call(`/runs/${started.runId}`)).json();
+    if (!['queued', 'running'].includes(run.status)) break;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  assert.equal(run.status, 'done', run.error);
+  assert.equal(run.prompts.filter((p) => p.keyword === 'email tools').length, 5);
+  assert.equal(run.prompts.filter((p) => p.keyword === 'crm software').length, 2);
+
+  // The default is 1, but each of the 21 keywords asks for 25: 525 prompts is over the 500 sync cap.
+  const kws = Array.from({ length: 21 }, (_, i) => `k${i}`);
+  const big = await call('/prompts/generate', { method: 'POST', body: { provider: 'offline', keywords: kws, promptsPerKeyword: 1, promptsByKeyword: Object.fromEntries(kws.map((k) => [k, 25])) } });
+  assert.equal(big.status, 413);
+  assert.equal((await call('/runs', { method: 'POST', body: { keywords: ['a'], promptsByKeyword: { a: 99 } } })).status, 400);
 });
 
 test('API keys are enforced when configured', async (t) => {

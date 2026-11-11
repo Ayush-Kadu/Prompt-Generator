@@ -167,3 +167,13 @@ code { font-size: 0.8em; background: var(--accent-soft); padding: 1px 4px; borde
   .alert { background: #3d1818; border-color: #6b2a2a; color: #ffa8a8; }
 }
 @media (max-width: 800px) { .filters { grid-template-columns: 1fr 1fr; } }
+
+/* Per-keyword prompt counts */
+.per-keyword { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-top: 8px; }
+.per-keyword summary { cursor: pointer; font-size: 0.85rem; font-weight: 600; }
+.per-keyword[open] summary { margin-bottom: 6px; }
+.per-keyword .kw-filter { margin: 6px 0; }
+.kw-counts { display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow-y: auto; margin: 6px 0; padding-right: 4px; }
+.kw-count { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; }
+.kw-count span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kw-count input { width: 72px; flex: none; padding: 4px 6px; }

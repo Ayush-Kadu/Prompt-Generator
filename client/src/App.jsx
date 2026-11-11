@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api.js';
-import { splitList, storage, uniqueKeywords } from './utils.js';
+import { customCount, splitList, storage, uniqueKeywords } from './utils.js';
 import GeneratorForm from './components/GeneratorForm.jsx';
 import ResultsTable from './components/ResultsTable.jsx';
 import History from './components/History.jsx';
 
 const DEFAULT_FORM = {
   provider: '', model: '',
-  name: '', keywords: '', promptsPerKeyword: 5, minQualityScore: 0,
+  name: '', keywords: '', promptsPerKeyword: 5, promptCounts: {}, minQualityScore: 0,
   brandName: '', brandWebsite: '', brandIndustry: '', brandDescription: '', brandAliases: '', competitors: '',
   brandMode: 'non-branded', brandedRatio: 30, analyzeWebsite: false,
   intents: [], sentiment: 'neutral', topic: '', location: '', languages: ['English'], instruction: '',
@@ -17,7 +17,8 @@ const DEFAULT_FORM = {
 function loadForm() {
   const { language, ...saved } = storage.get('pg_form_v2', {});
   const languages = Array.isArray(saved.languages) && saved.languages.length ? saved.languages : [language || 'English'];
-  return { ...DEFAULT_FORM, ...saved, languages };
+  const promptCounts = saved.promptCounts && typeof saved.promptCounts === 'object' && !Array.isArray(saved.promptCounts) ? saved.promptCounts : {};
+  return { ...DEFAULT_FORM, ...saved, languages, promptCounts };
 }
 
 export default function App() {
@@ -86,10 +87,15 @@ export default function App() {
     setPrompts([]);
     setProgress({ status: 'queued', log: [] });
     try {
+      const keywords = uniqueKeywords(form.keywords);
       const { runId } = await api.startRun({
         ...llmBody,
         name: form.name,
-        keywords: uniqueKeywords(form.keywords),
+        keywords,
+        // Only keywords with their own count; the rest use promptsPerKeyword.
+        promptsByKeyword: Object.fromEntries(keywords
+          .filter((k) => customCount(form.promptCounts, k) !== undefined)
+          .map((k) => [k, customCount(form.promptCounts, k)])),
         brand: {
           name: form.brandName, website: form.brandWebsite, aliases: splitList(form.brandAliases),
           competitors: splitList(form.competitors), industry: form.brandIndustry,

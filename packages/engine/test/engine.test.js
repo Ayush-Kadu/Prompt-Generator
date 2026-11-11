@@ -82,6 +82,25 @@ test('multiple languages: full set per language, tagged, counted and limited', a
   await assert.rejects(createPromptEngine({ llm }).generate(many), /15000 prompts/);
 });
 
+test('per-keyword prompt counts override the default; branded split and limits follow them', async () => {
+  const engine = createPromptEngine();
+  const r = await engine.generate({
+    brand, keywords: ['custom cakes', 'cupcakes', 'eggless cakes'], promptsPerKeyword: 2,
+    promptsByKeyword: { ' CUPCAKES ': 6, 'eggless cakes': 4, 'not a keyword': 9 }, brandMode: 'mixed', brandedRatio: 50,
+  });
+  const count = (k) => r.prompts.filter((p) => p.keyword === k).length;
+  assert.deepEqual([count('custom cakes'), count('cupcakes'), count('eggless cakes')], [2, 6, 4]);
+  assert.equal(r.target, 12);
+  assert.deepEqual(r.settings.promptsByKeyword, { cupcakes: 6, 'eggless cakes': 4 }); // re-keyed to the kept spelling; unknown keys dropped
+  assert.equal(r.prompts.filter((p) => p.keyword === 'cupcakes' && p.category === 'Branded').length, 3);
+
+  // The total limit counts per-keyword numbers: 400 × 25 = 10,000 is fine, one more prompt is not.
+  const kws = Array.from({ length: 401 }, (_, i) => `k${i}`);
+  const counts = Object.fromEntries(kws.slice(0, 400).map((k) => [k, 25]));
+  await assert.rejects(engine.generate({ keywords: kws, promptsPerKeyword: 1, promptsByKeyword: counts }), /10001 prompts/);
+  await assert.rejects(engine.generate({ keywords: ['a'], promptsByKeyword: { a: 26 } }), EngineValidationError);
+});
+
 test('offline mode collapses multiple languages to English with a warning', async () => {
   const r = await createPromptEngine().generate({ keywords: ['cupcakes'], promptsPerKeyword: 3, languages: ['Hindi', 'English'] });
   assert.equal(r.prompts.length, 3);

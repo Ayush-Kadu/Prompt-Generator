@@ -3,7 +3,7 @@
 import express, { Router } from 'express';
 import { z } from 'zod';
 import {
-  BRAND_MODES, ENGINE_VERSION, GenerateSchema, INTENTS, LANGUAGES, LIMITS, SCORE_WEIGHTS, SENTIMENTS, createPromptEngine,
+  BRAND_MODES, ENGINE_VERSION, INTENTS, LANGUAGES, LIMITS, SCORE_WEIGHTS, SENTIMENTS, createPromptEngine, expectedPrompts, normalizeGenerateRequest,
 } from '@promptgen/engine';
 import { asyncRoute } from '../middleware.js';
 import { cancelRun, enqueueRun, jobProgress } from '../jobs.js';
@@ -79,9 +79,7 @@ export function createV1Router({ registry, config }) {
   /** Synchronous generation for small requests; larger ones should use POST /runs. */
   router.post('/prompts/generate', asyncRoute(async (req, res) => {
     const body = req.body || {};
-    const languageCount = Array.isArray(body.languages) && body.languages.length ? new Set(body.languages).size : 1;
-    const expected = (Array.isArray(body.keywords) && body.keywords.length ? body.keywords.length : Number(body.autoKeywords) || 0) *
-      (Number(body.promptsPerKeyword) || 5) * languageCount;
+    const expected = expectedPrompts(normalizeGenerateRequest(body)); // invalid input → 400 here
     if (expected > config.maxSyncPrompts) {
       return res.status(413).json({ error: `Requests over ${config.maxSyncPrompts} prompts must use POST /api/v1/runs (async).`, expected });
     }
@@ -96,23 +94,13 @@ export function createV1Router({ registry, config }) {
   router.post('/runs', asyncRoute(async (req, res) => {
     const body = req.body || {};
     const { llm, provider, model } = llmFor(body);
-    // Validate up-front so bad input is a 400 now, not a failed run later.
-    const parsed = GenerateSchema.safeParse(body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: 'Invalid input', details: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`) });
-    }
-    const s = parsed.data;
-    if (s.brandMode !== 'non-branded' && !s.brand.name?.trim()) {
-      return res.status(400).json({ error: 'Invalid input', details: ['brand.name: required for branded and mixed modes'] });
-    }
-    if (!s.keywords.length && !s.autoKeywords) {
-      return res.status(400).json({ error: 'Invalid input', details: ['keywords: provide keywords or set autoKeywords'] });
-    }
+    // Validate up-front with the engine's own rules, so bad input is a 400 now, not a failed run later.
+    const s = normalizeGenerateRequest(body);
     const name = (typeof body.name === 'string' && body.name.trim().slice(0, 120)) ||
       `${s.brand.name || s.keywords[0] || s.brand.website} · ${new Date().toLocaleString('en-GB')}`;
     const run = await createRun({
       name, status: 'queued', origin: req.get('x-client') === 'ui' ? 'ui' : 'api', settings: s, prompts: [],
-      target: (s.keywords.length || s.autoKeywords) * s.promptsPerKeyword * (new Set(s.languages).size || 1), provider, model,
+      target: expectedPrompts(s), provider, model,
     });
     enqueueRun(run.id, body, { llm, concurrency: config.concurrency, maxJobs: config.maxJobs });
     res.status(202).location(`/api/v1/runs/${run.id}`).json({ runId: run.id, status: 'queued', target: run.target, statusUrl: `/api/v1/runs/${run.id}` });

@@ -16,7 +16,7 @@ import { extractKeywords } from './modules/keywordExtraction.js';
 import { generateRecommendations } from './modules/recommendations.js';
 import { scorePrompts } from './modules/qualityScoring.js';
 import {
-  AnalyzeBrandSchema, EngineValidationError, ExtractKeywordsSchema, ScoreSchema, normalizeBrand, normalizeGenerateRequest, parse,
+  AnalyzeBrandSchema, EngineValidationError, ExtractKeywordsSchema, ScoreSchema, normalizeBrand, normalizeGenerateRequest, parse, promptsFor,
 } from './schema.js';
 import { promptKey, uniqueStrings } from './text.js';
 
@@ -54,7 +54,10 @@ function mergeLanguageResults(results) {
 }
 
 export * from './constants.js';
-export { EngineValidationError, GenerateSchema, AnalyzeBrandSchema, ExtractKeywordsSchema, ScoreSchema } from './schema.js';
+export {
+  EngineValidationError, GenerateSchema, AnalyzeBrandSchema, ExtractKeywordsSchema, ScoreSchema,
+  normalizeGenerateRequest, promptsFor, expectedPrompts,
+} from './schema.js';
 export { normalizeInstruction } from './modules/instructions.js';
 export { brandMatcher, promptKey } from './text.js';
 export { inferIntent, inferSentiment } from './modules/categorization.js';
@@ -150,7 +153,7 @@ export function createPromptEngine(options = {}) {
       settings.profile = profile;
       // One full pass per language, one after another, so provider load stays at `concurrency`.
       const { languages } = settings;
-      const perLanguage = settings.keywords.length * settings.promptsPerKeyword;
+      const perLanguage = settings.keywords.reduce((a, k) => a + promptsFor(settings, k), 0);
       const results = [];
       for (const [i, language] of languages.entries()) {
         const multi = languages.length > 1;

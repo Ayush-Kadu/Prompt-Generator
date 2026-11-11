@@ -30,10 +30,11 @@ Every endpoint that calls a model accepts optional `"provider"` and `"model"`:
 | `sentiment` | `neutral` \| `positive` \| `negative` \| `mixed` | `neutral` | |
 | `topic`, `location` | string | | |
 | `language` | string | `English` | See `GET /meta` → `languages` |
-| `languages` | string[] | `[]` | Several languages: the full set is generated once per language (`promptsPerKeyword` × keywords × languages, counted against the limits). Overrides `language` when non-empty. `stats.byLanguage` gives the split |
+| `languages` | string[] | `[]` | Several languages: the full set is generated once per language (each keyword's count × languages, counted against the limits). Overrides `language` when non-empty. `stats.byLanguage` gives the split |
 | `context` | string ≤1500 | | Background about the business (sandboxed) |
 | `instruction` | string ≤500 | | Steering, e.g. "focus on pricing" (sandboxed) |
-| `promptsPerKeyword` | 1–25 | 5 | |
+| `promptsPerKeyword` | 1–25 | 5 | Default count for every keyword |
+| `promptsByKeyword` | object | `{}` | Own count (1–25) for individual keywords, e.g. `{"custom cakes": 10, "cupcakes": 3}`. Keys match keywords case-insensitively; unknown keys are ignored; other keywords use `promptsPerKeyword`. The size limits count these numbers |
 | `minQualityScore` | 0–100 | 0 | Prompts scoring lower are rejected and re-requested |
 
 ## Prompt object
@@ -105,9 +106,10 @@ curl -X POST localhost:5000/api/v1/brand/analyze -d '{"website":"sweetcrumbs.in"
 # Keyword extraction → { keywords: [{ keyword, type }], source, profile }
 curl -X POST localhost:5000/api/v1/keywords/extract -d '{"brand":{"name":"Sweet Crumbs","website":"sweetcrumbs.in"},"seedKeywords":["custom cakes"],"limit":40}'
 
-# Keyword import from Excel → { keywords: string[], total, truncated, sheet }
+# Keyword import from Excel → { keywords: string[], counts: { keyword: n }, total, truncated, sheet }
 # Send the .xlsx file itself as the body. Reads the first sheet with data: the column headed
 # "Keyword" (or "Keywords", "Term", "Query"…) if row 1 has one, otherwise column A. Deduped, max 2,000. .xls is not supported.
+# A "Prompts" (or "Count", "Number of prompts") column in row 1 fills `counts`, ready to send as promptsByKeyword.
 curl -X POST localhost:5000/api/v1/keywords/import -H 'content-type: application/octet-stream' --data-binary @keywords.xlsx
 
 # Categorize or score prompts generated anywhere (no LLM call)

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { api } from '../api.js';
-import { readKeywordFile, splitList, uniqueKeywords } from '../utils.js';
+import { customCount, readKeywordFile, splitList, uniqueKeywords } from '../utils.js';
 
 const FALLBACK_LANGUAGES = ['English', 'Hindi', 'Marathi', 'Bengali', 'Gujarati'];
 
@@ -24,13 +24,22 @@ export default function GeneratorForm({ meta, form, setForm, onSubmit, busy, onE
   const [importing, setImporting] = useState(false);
   const [profile, setProfile] = useState(null);
   const [suggested, setSuggested] = useState([]);
+  const [countFilter, setCountFilter] = useState('');
 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
   const keywords = uniqueKeywords(form.keywords);
   const allLanguages = meta?.languages || FALLBACK_LANGUAGES;
   const languages = form.languages?.length ? form.languages : ['English'];
-  const total = keywords.length * (Number(form.promptsPerKeyword) || 0) * languages.length;
   const limits = meta?.limits || { maxKeywords: 2000, maxPerKeyword: 25, maxTotalPrompts: 10000, maxInstruction: 500, maxContext: 1500 };
+  // Each keyword uses its own count when set, otherwise "Prompts per keyword".
+  const defaultCount = Number(form.promptsPerKeyword) || 0;
+  const countFor = (k) => customCount(form.promptCounts, k) ?? defaultCount;
+  const customised = keywords.filter((k) => customCount(form.promptCounts, k) !== undefined).length;
+  const perLanguage = keywords.reduce((a, k) => a + countFor(k), 0);
+  const total = perLanguage * languages.length;
+  const shownCountKeywords = countFilter.trim()
+    ? keywords.filter((k) => k.toLowerCase().includes(countFilter.trim().toLowerCase()))
+    : keywords;
   const needsBrand = form.brandMode !== 'non-branded';
   const tooMany = total > limits.maxTotalPrompts || keywords.length > limits.maxKeywords;
   const brandedCount = form.brandMode === 'branded' ? form.promptsPerKeyword
@@ -88,6 +97,26 @@ export default function GeneratorForm({ meta, form, setForm, onSubmit, busy, onE
     setSuggested((s) => s.filter((k) => !list.includes(k)));
   };
 
+  const clampCount = (n) => Math.min(limits.maxPerKeyword, Math.max(1, Math.round(Number(n)) || 1));
+
+  /** Store per-keyword counts ([keyword, count] pairs) from an import. */
+  const mergeCounts = (pairs) => {
+    if (!pairs.length) return;
+    setForm((f) => ({
+      ...f,
+      promptCounts: { ...(f.promptCounts || {}), ...Object.fromEntries(pairs.map(([k, n]) => [k.toLowerCase(), clampCount(n)])) },
+    }));
+  };
+
+  /** Empty box = use the default count again. */
+  const setCount = (keyword, raw) => setForm((f) => {
+    const next = { ...(f.promptCounts || {}) };
+    const key = keyword.toLowerCase();
+    if (raw === '') delete next[key];
+    else next[key] = clampCount(raw);
+    return { ...f, promptCounts: next };
+  });
+
   const onFile = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -104,10 +133,13 @@ export default function GeneratorForm({ meta, form, setForm, onSubmit, busy, onE
           onError('No keywords found in that workbook. Put them in the first column, or under a "Keyword" header.');
         } else {
           addKeywords(r.keywords);
+          mergeCounts(Object.entries(r.counts || {}));
           if (r.truncated) onError(`Imported the first ${r.keywords.length} of ${r.total} keywords (the limit is ${r.keywords.length}).`);
         }
       } else {
-        addKeywords(await readKeywordFile(file));
+        const r = await readKeywordFile(file);
+        addKeywords(r.keywords);
+        mergeCounts(r.counts);
       }
     } catch (err) {
       onError(`Import failed: ${err.message}`);
@@ -235,7 +267,8 @@ export default function GeneratorForm({ meta, form, setForm, onSubmit, busy, onE
             </div>
           )}
           <small className={tooMany ? 'error' : ''}>
-            {keywords.length} unique keyword{keywords.length === 1 ? '' : 's'} × {form.promptsPerKeyword}
+            {keywords.length} unique keyword{keywords.length === 1 ? '' : 's'}
+            {customised ? ` → ${perLanguage} prompts (${customised} with their own count)` : ` × ${form.promptsPerKeyword}`}
             {languages.length > 1 ? ` × ${languages.length} languages` : ''} = <b>{total}</b> prompts
             {tooMany && ` — over the limit of ${limits.maxTotalPrompts} prompts / ${limits.maxKeywords} keywords`}
           </small>
@@ -243,7 +276,7 @@ export default function GeneratorForm({ meta, form, setForm, onSubmit, busy, onE
 
         <div className="grid2">
           <label className="field">
-            <span>Prompts per keyword</span>
+            <span>Prompts per keyword <em>default</em></span>
             <input type="number" min={1} max={limits.maxPerKeyword} value={form.promptsPerKeyword}
               onChange={(e) => set({ promptsPerKeyword: Math.max(1, Math.min(limits.maxPerKeyword, Number(e.target.value) || 1)) })} />
           </label>
@@ -253,6 +286,33 @@ export default function GeneratorForm({ meta, form, setForm, onSubmit, busy, onE
               onChange={(e) => set({ minQualityScore: Number(e.target.value) })} />
           </label>
         </div>
+
+        {keywords.length > 0 && (
+          <details className="per-keyword">
+            <summary>
+              Prompts for each keyword{' '}
+              <em>{customised ? `${customised} of ${keywords.length} set individually` : `all use the default (${defaultCount})`}</em>
+            </summary>
+            <small>Leave a box empty to use the default. Imports can fill these: a "Prompts" column in Excel, or a second column in CSV.</small>
+            {keywords.length > 12 && (
+              <input className="kw-filter" value={countFilter} placeholder="Find a keyword" aria-label="Find a keyword"
+                onChange={(e) => setCountFilter(e.target.value)} />
+            )}
+            <div className="kw-counts">
+              {shownCountKeywords.map((k) => (
+                <label key={k.toLowerCase()} className="kw-count">
+                  <span title={k}>{k}</span>
+                  <input type="number" min={1} max={limits.maxPerKeyword} step={1} value={customCount(form.promptCounts, k) ?? ''}
+                    placeholder={String(defaultCount)} aria-label={`Prompts for ${k}`} onChange={(e) => setCount(k, e.target.value)} />
+                </label>
+              ))}
+              {!shownCountKeywords.length && <small>No keyword matches.</small>}
+            </div>
+            {customised > 0 && (
+              <button type="button" className="link" onClick={() => set({ promptCounts: {} })}>Reset all to the default</button>
+            )}
+          </details>
+        )}
       </section>
 
       <section>

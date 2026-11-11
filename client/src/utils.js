@@ -33,18 +33,31 @@ export function brandMatcher(brand) {
   return (t) => re.test(t);
 }
 
-/** Read keywords from a .txt or .csv file: first column of each line. */
+/**
+ * Read keywords from a .txt or .csv file: first column of each line. In a .csv, a whole
+ * number in the second column is that keyword's prompt count ("custom cakes,10").
+ * @returns {Promise<{keywords:string[], counts:[string, number][]}>}
+ */
 export async function readKeywordFile(file) {
   const text = await file.text();
-  const lines = text.split(/\r?\n/);
   const isCsv = /\.csv$/i.test(file.name);
-  const out = lines
-    .map((l) => (isCsv ? l.split(',')[0] : l))
-    .map((s) => s.replace(/^"|"$/g, '').trim())
-    .filter(Boolean);
-  // Drop a header row like "keyword"
-  if (out.length && /^keywords?$/i.test(out[0])) out.shift();
-  return out;
+  const unquote = (s) => (s || '').replace(/^"|"$/g, '').trim();
+  const rows = text.split(/\r?\n/)
+    .map((l) => (isCsv ? l.split(',') : [l]))
+    .map(([kw, count]) => ({ keyword: unquote(kw), count: Number(unquote(count)) }))
+    .filter((r) => r.keyword);
+  // Drop a header row like "keyword" or "keyword,prompts"
+  if (rows.length && /^keywords?$/i.test(rows[0].keyword)) rows.shift();
+  return {
+    keywords: rows.map((r) => r.keyword),
+    counts: rows.filter((r) => Number.isInteger(r.count) && r.count >= 1).map((r) => [r.keyword, r.count]),
+  };
+}
+
+/** A keyword's own prompt count from a { lowercased keyword: count } map, or undefined. */
+export function customCount(counts, keyword) {
+  const k = String(keyword).toLowerCase();
+  return counts && Object.hasOwn(counts, k) ? counts[k] : undefined;
 }
 
 export const storage = {

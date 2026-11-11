@@ -59,6 +59,9 @@ export const GenerateSchema = z.object({
   /** Generate the full set once per language. Overrides `language` when non-empty. */
   languages: z.array(z.enum(LANGUAGES)).max(LANGUAGES.length).optional().default([]),
   promptsPerKeyword: z.number().int().min(1).max(LIMITS.maxPerKeyword).default(5),
+  /** Optional count for individual keywords ({ "custom cakes": 10 }); others use promptsPerKeyword. Keys match case-insensitively. */
+  promptsByKeyword: z.record(z.string().max(200), z.number().int().min(1).max(LIMITS.maxPerKeyword)).optional().default({})
+    .refine((m) => Object.keys(m).length <= LIMITS.maxKeywords * 2, `at most ${LIMITS.maxKeywords * 2} entries`),
   /** Prompts scoring below this are rejected and re-requested (0 keeps all). */
   minQualityScore: z.number().int().min(0).max(100).default(0),
 });
@@ -103,6 +106,20 @@ export function normalizeBrand(b = {}) {
   };
 }
 
+/** Prompts asked for one keyword: its own count when set, otherwise promptsPerKeyword. */
+export function promptsFor(settings, keyword) {
+  const map = settings.promptsByKeyword || {};
+  return Object.hasOwn(map, keyword) ? map[keyword] : settings.promptsPerKeyword;
+}
+
+/** Total prompts a normalised request asks for, across keywords and languages. */
+export function expectedPrompts(s) {
+  const perLanguage = s.keywords.length
+    ? s.keywords.reduce((a, k) => a + promptsFor(s, k), 0)
+    : s.autoKeywords * s.promptsPerKeyword;
+  return perLanguage * (s.languages?.length || 1);
+}
+
 /** Validate + normalise a generate request. Business rules that zod can't express live here. */
 export function normalizeGenerateRequest(input) {
   const r = parse(GenerateSchema, input);
@@ -115,7 +132,11 @@ export function normalizeGenerateRequest(input) {
   }
   if (r.brandMode !== 'non-branded' && !brand.name) throw new EngineValidationError(['brand.name: required for branded and mixed modes']);
   const languages = r.languages.length ? [...new Set(r.languages)] : [r.language];
-  const expected = (keywords.length || r.autoKeywords) * r.promptsPerKeyword * languages.length;
+  // Re-key per-keyword counts to the keyword spellings kept above (same trim/case rules as uniqueStrings).
+  const keyOf = (k) => String(k).replace(/\s+/g, ' ').trim().slice(0, 120).toLowerCase();
+  const counts = new Map(Object.entries(r.promptsByKeyword).map(([k, n]) => [keyOf(k), n]));
+  const promptsByKeyword = Object.fromEntries(keywords.filter((k) => counts.has(keyOf(k))).map((k) => [k, counts.get(keyOf(k))]));
+  const expected = expectedPrompts({ keywords, autoKeywords: r.autoKeywords, promptsPerKeyword: r.promptsPerKeyword, promptsByKeyword, languages });
   if (expected > LIMITS.maxTotalPrompts) {
     throw new EngineValidationError([`That is ${expected} prompts; the limit is ${LIMITS.maxTotalPrompts}. Reduce keywords, prompts per keyword or languages.`]);
   }
@@ -125,6 +146,7 @@ export function normalizeGenerateRequest(input) {
     keywords,
     languages,
     language: languages[0],
+    promptsByKeyword,
     intents: [...new Set(r.intents)],
     topic: normalizeInstruction(r.topic, 200) || '',
     context: normalizeInstruction(r.context, LIMITS.maxContext),
