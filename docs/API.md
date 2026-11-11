@@ -29,6 +29,7 @@ Every endpoint that calls a model accepts optional `"provider"` and `"model"`:
 | `brandedCount` | int ≥ 0 | | `mixed` only: exact number of branded prompts in the total (per language); the rest are non-branded. Overrides `brandedRatio`. Shared across keywords in proportion to each keyword's count, so the total is exact. 400 if it is more than the total |
 | `intents` | string[] | all | `informational`, `commercial`, `transactional`, `comparison`, `local`, `review`, `navigational` |
 | `sentiment` | `neutral` \| `positive` \| `negative` \| `mixed` | `neutral` | |
+| `sentimentCounts` | object | | `mixed` only: exact numbers in the total (per language), e.g. `{"positive": 30, "negative": 20}`; `neutral` left out = the rest, or give all three adding up to the total. Shared across keywords by their counts, and enforced (prompts over a sentiment's quota are dropped and topped up). `stats.bySentiment` gives the result. 400 if the numbers don't fit the total |
 | `topic`, `location` | string | | |
 | `language` | string | `English` | See `GET /meta` → `languages` |
 | `languages` | string[] | `[]` | Several languages: the full set is generated once per language (each keyword's count × languages, counted against the limits). Overrides `language` when non-empty. `stats.byLanguage` gives the split |

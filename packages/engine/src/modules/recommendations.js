@@ -16,6 +16,8 @@ import { scorePrompt, scorePrompts } from './qualityScoring.js';
 const PROMPTS_PER_CALL = 40;  // keep each reply small enough to stay reliable
 const MAX_TOPUP_ROUNDS = 2;   // extra rounds that only ask for what is still missing
 const AVOID_PER_KEYWORD = 15; // existing prompts shown to the model in top-up rounds
+const SENTIMENT_KEYS = ['positive', 'neutral', 'negative'];
+const bySentimentKey = (arr) => Object.fromEntries(SENTIMENT_KEYS.map((k, j) => [k, arr[j]]));
 
 export const GENERATION_SYSTEM = `You are a search-behaviour analyst who writes realistic prompts that real people type into AI assistants (ChatGPT, Gemini, Perplexity, Claude) while researching a product or service.
 
@@ -39,8 +41,15 @@ export function buildGenerationPrompt(settings, batch) {
   const { brand } = settings;
   const profile = settings.profile || {};
   const counts = [];
-  if (batch.nonBranded > 0) counts.push(`${batch.nonBranded} NON-BRANDED prompt(s)`);
-  if (batch.branded > 0) counts.push(`${batch.branded} BRANDED prompt(s) that mention "${brand.name}"`);
+  if (batch.cells) {
+    // Exact sentiment numbers: one entry per (brand group × sentiment) that is needed.
+    for (const [group, label] of [['nonBranded', 'NON-BRANDED'], ['branded', `BRANDED (mention "${brand.name}")`]]) {
+      for (const s of SENTIMENT_KEYS) if (batch.cells[group][s] > 0) counts.push(`${batch.cells[group][s]} ${label} ${s.toUpperCase()}`);
+    }
+  } else {
+    if (batch.nonBranded > 0) counts.push(`${batch.nonBranded} NON-BRANDED prompt(s)`);
+    if (batch.branded > 0) counts.push(`${batch.branded} BRANDED prompt(s) that mention "${brand.name}"`);
+  }
 
   const avoid = Object.entries(batch.avoid || {}).filter(([, l]) => l.length);
   return [
@@ -63,9 +72,13 @@ export function buildGenerationPrompt(settings, batch) {
     batch.keywords.map((k, i) => `${i + 1}. ${k}`).join('\n'),
     '',
     '## Task',
-    `For EACH keyword above, write exactly ${counts.join(' and ')}.`,
+    batch.cells
+      ? `For EACH keyword above, write exactly these prompts: ${counts.join(', ')}.`
+      : `For EACH keyword above, write exactly ${counts.join(' and ')}.`,
     `Spread the prompts across these search intents:\n${intents.map((i) => `  - ${i}: ${INTENTS[i]}`).join('\n')}`,
-    `Sentiment / tone: ${settings.sentiment} — ${SENTIMENTS[settings.sentiment]}.`,
+    batch.cells
+      ? `Sentiment / tone: give each prompt the sentiment it was requested with (${SENTIMENT_KEYS.map((s) => `${s}: ${SENTIMENTS[s]}`).join('; ')}) and put that sentiment in its "sentiment" field.`
+      : `Sentiment / tone: ${settings.sentiment} — ${SENTIMENTS[settings.sentiment]}.`,
     settings.location ? `Where it fits, make some prompts specific to ${settings.location}.` : null,
     `Write every prompt in ${settings.language}.`,
     renderSteering({ context: null, instruction: settings.instruction }),
@@ -91,18 +104,20 @@ async function pool(items, limit, worker, signal) {
   }));
 }
 
+/** Group keywords that need the same counts, so one instruction fits the whole batch. */
 function planBatches(needs) {
   const groups = new Map();
   for (const n of needs) {
-    const sig = `${n.branded}|${n.nonBranded}`;
-    if (!groups.has(sig)) groups.set(sig, []);
-    groups.get(sig).push(n.keyword);
+    const sig = JSON.stringify([n.branded, n.nonBranded, n.cells || null]);
+    if (!groups.has(sig)) groups.set(sig, { branded: n.branded, nonBranded: n.nonBranded, cells: n.cells || null, keywords: [] });
+    groups.get(sig).keywords.push(n.keyword);
   }
   const batches = [];
-  for (const [sig, kws] of groups) {
-    const [branded, nonBranded] = sig.split('|').map(Number);
-    const size = Math.max(1, Math.floor(PROMPTS_PER_CALL / Math.max(1, branded + nonBranded)));
-    for (let i = 0; i < kws.length; i += size) batches.push({ keywords: kws.slice(i, i + size), branded, nonBranded });
+  for (const g of groups.values()) {
+    const size = Math.max(1, Math.floor(PROMPTS_PER_CALL / Math.max(1, g.branded + g.nonBranded)));
+    for (let i = 0; i < g.keywords.length; i += size) {
+      batches.push({ keywords: g.keywords.slice(i, i + size), branded: g.branded, nonBranded: g.nonBranded, cells: g.cells });
+    }
   }
   return batches;
 }
@@ -148,11 +163,33 @@ export async function generateRecommendations(settings, deps = {}) {
   }
   const minScore = settings.minQualityScore || 0;
 
-  const buckets = new Map(settings.keywords.map((k, i) => [k.toLowerCase(), {
-    keyword: k, brandedTarget: brandedSplit[i], nonBrandedTarget: sizes[i] - brandedSplit[i], branded: [], nonBranded: [],
-  }]));
+  // Exact sentiment numbers (mixed sentiment): share each sentiment's total over the keywords so every
+  // keyword's row adds up to its own count, then split each row between its branded and non-branded prompts.
+  let sentimentRows = null;
+  const sentimentTotals = settings.sentiment === 'mixed' && settings.sentimentCounts ? SENTIMENT_KEYS.map((k) => settings.sentimentCounts[k]) : null;
+  const sizeTotal = sizes.reduce((a, n) => a + n, 0);
+  if (sentimentTotals && sentimentTotals.some((n) => n > 0)) {
+    // Fewer keywords than planned (auto-extracted) → scale the numbers to the real total.
+    let left = sentimentTotals.reduce((a, n) => a + n, 0) === sizeTotal ? [...sentimentTotals] : apportion(sizeTotal, sentimentTotals);
+    sentimentRows = sizes.map((n) => {
+      const row = apportion(n, left);
+      left = left.map((r, j) => r - row[j]);
+      return row;
+    });
+  }
+
+  const buckets = new Map(settings.keywords.map((k, i) => {
+    let sentiment = null;
+    if (sentimentRows) {
+      const brandedRow = apportion(brandedSplit[i], sentimentRows[i]);
+      sentiment = { branded: bySentimentKey(brandedRow), nonBranded: bySentimentKey(sentimentRows[i].map((n, j) => n - brandedRow[j])) };
+    }
+    return [k.toLowerCase(), {
+      keyword: k, brandedTarget: brandedSplit[i], nonBrandedTarget: sizes[i] - brandedSplit[i], sentiment, branded: [], nonBranded: [],
+    }];
+  }));
   const seen = new Set();
-  const stats = { batches: 0, failedBatches: 0, rawCandidates: 0, duplicates: 0, wrongCategory: 0, lowQuality: 0, overflow: 0, unmatched: 0, fallback: 0 };
+  const stats = { batches: 0, failedBatches: 0, rawCandidates: 0, duplicates: 0, wrongCategory: 0, wrongSentiment: 0, lowQuality: 0, overflow: 0, unmatched: 0, fallback: 0 };
   const target = [...buckets.values()].reduce((a, b) => a + b.brandedTarget + b.nonBrandedTarget, 0);
   let generated = 0;
 
@@ -176,6 +213,11 @@ export async function generateRecommendations(settings, deps = {}) {
     if ((branded && !bucket.brandedTarget) || (!branded && !bucket.nonBrandedTarget)) { stats.wrongCategory++; return; }
     const list = branded ? bucket.branded : bucket.nonBranded;
     if (list.length >= (branded ? bucket.brandedTarget : bucket.nonBrandedTarget)) { stats.overflow++; return; }
+    if (bucket.sentiment) {
+      const want = bucket.sentiment[branded ? 'branded' : 'nonBranded'][cat.sentiment] || 0;
+      if (!want) { stats.wrongSentiment++; return; }
+      if (list.filter((p) => p.sentiment === cat.sentiment).length >= want) { stats.overflow++; return; }
+    }
     const siblings = [...bucket.branded, ...bucket.nonBranded].map((p) => p.text);
     const q = scorePrompt({ text: item.prompt, keyword: bucket.keyword, category: cat.category }, { brand, siblings });
     if (q.score < minScore) { stats.lowQuality++; return; }
@@ -195,11 +237,18 @@ export async function generateRecommendations(settings, deps = {}) {
   };
 
   const shortfalls = () => [...buckets.values()]
-    .map((b) => ({
-      keyword: b.keyword,
-      branded: Math.max(0, b.brandedTarget - b.branded.length),
-      nonBranded: Math.max(0, b.nonBrandedTarget - b.nonBranded.length),
-    }))
+    .map((b) => {
+      const need = {
+        keyword: b.keyword,
+        branded: Math.max(0, b.brandedTarget - b.branded.length),
+        nonBranded: Math.max(0, b.nonBrandedTarget - b.nonBranded.length),
+      };
+      if (b.sentiment) {
+        const missing = (group, list) => Object.fromEntries(SENTIMENT_KEYS.map((s) => [s, Math.max(0, b.sentiment[group][s] - list.filter((p) => p.sentiment === s).length)]));
+        need.cells = { branded: missing('branded', b.branded), nonBranded: missing('nonBranded', b.nonBranded) };
+      }
+      return need;
+    })
     .filter((n) => n.branded + n.nonBranded > 0);
 
   const first = buckets.values().next().value;
@@ -207,7 +256,10 @@ export async function generateRecommendations(settings, deps = {}) {
   const shape = sizes.every((n) => n === sizes[0]) && brandedSplit.every((n) => n === brandedSplit[0])
     ? `${first.nonBrandedTarget} non-branded + ${first.brandedTarget} branded each`
     : `${Math.min(...sizes)}–${Math.max(...sizes)} per keyword, ${target - brandedTotal} non-branded + ${brandedTotal} branded in total`;
-  say(`Planning ${target} prompts for ${settings.keywords.length} keyword(s): ${shape}${llm ? '' : ' (offline templates — no LLM configured)'}.`);
+  const moods = sentimentRows
+    ? `; ${SENTIMENT_KEYS.map((s, j) => `${sentimentRows.reduce((a, row) => a + row[j], 0)} ${s}`).join(', ')}`
+    : '';
+  say(`Planning ${target} prompts for ${settings.keywords.length} keyword(s): ${shape}${moods}${llm ? '' : ' (offline templates — no LLM configured)'}.`);
 
   for (let round = 0; round <= MAX_TOPUP_ROUNDS; round++) {
     const needs = shortfalls();
@@ -268,7 +320,7 @@ export async function generateRecommendations(settings, deps = {}) {
   // Final score with full sibling context.
   const prompts = scorePrompts([...buckets.values()].flatMap((b) => [...b.nonBranded, ...b.branded]), { brand });
   const avg = prompts.length ? Math.round(prompts.reduce((a, p) => a + p.score, 0) / prompts.length) : 0;
-  say(`Done: ${prompts.length}/${target} prompts, average quality ${avg}/100 (${stats.duplicates} duplicates, ${stats.wrongCategory} wrong-category, ${stats.lowQuality} low-quality dropped).`);
+  say(`Done: ${prompts.length}/${target} prompts, average quality ${avg}/100 (${stats.duplicates} duplicates, ${stats.wrongCategory} wrong-category, ${stats.wrongSentiment ? `${stats.wrongSentiment} wrong-sentiment, ` : ''}${stats.lowQuality} low-quality dropped).`);
 
   return {
     prompts,
@@ -278,6 +330,7 @@ export async function generateRecommendations(settings, deps = {}) {
       total: prompts.length,
       branded: prompts.filter((p) => p.category === 'Branded').length,
       nonBranded: prompts.filter((p) => p.category === 'Non-branded').length,
+      bySentiment: Object.fromEntries(SENTIMENT_KEYS.map((s) => [s, prompts.filter((p) => p.sentiment === s).length])),
       averageScore: avg,
     },
     log,

@@ -10,6 +10,7 @@ const DEFAULT_FORM = {
   name: '', keywords: '', promptsPerKeyword: 5, promptCounts: {}, minQualityScore: 0,
   brandName: '', brandWebsite: '', brandIndustry: '', brandDescription: '', brandAliases: '', competitors: '',
   brandMode: 'non-branded', brandedRatio: 30, brandedSplit: 'ratio', brandedNumber: 0, analyzeWebsite: false,
+  sentimentSplit: 'balanced', sentimentPositive: 0, sentimentNegative: 0,
   intents: [], sentiment: 'neutral', topic: '', location: '', languages: ['English'], instruction: '',
 };
 

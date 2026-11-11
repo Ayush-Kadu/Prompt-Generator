@@ -47,6 +47,7 @@ function mergeLanguageResults(results) {
       total: prompts.length,
       branded: prompts.filter((p) => p.category === 'Branded').length,
       nonBranded: prompts.filter((p) => p.category === 'Non-branded').length,
+      bySentiment: Object.fromEntries(['positive', 'neutral', 'negative'].map((s) => [s, prompts.filter((p) => p.sentiment === s).length])),
       averageScore: prompts.length ? Math.round(prompts.reduce((a, p) => a + p.score, 0) / prompts.length) : 0,
       byLanguage,
     },

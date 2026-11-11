@@ -77,7 +77,9 @@ export async function buildWorkbook({ run, prompts }) {
     ['Brand mode', s.brandMode !== 'mixed' ? s.brandMode
       : s.brandedCount !== null && s.brandedCount !== undefined ? `mixed (${s.brandedCount} branded in the total, per language)` : `mixed (${s.brandedRatio}% branded)`],
     ['Intents', (s.intents?.length ? s.intents : Object.keys(INTENTS)).join(', ')],
-    ['Sentiment', s.sentiment], ['Topic', s.topic], ['Context', s.context], ['Instruction', s.instruction],
+    ['Sentiment', s.sentimentCounts
+      ? `mixed (${s.sentimentCounts.positive} positive, ${s.sentimentCounts.neutral} neutral, ${s.sentimentCounts.negative} negative, per language)`
+      : s.sentiment], ['Topic', s.topic], ['Context', s.context], ['Instruction', s.instruction],
     ['Location', s.location], ['Languages', (s.languages?.length ? s.languages : [s.language]).filter(Boolean).join(', ')], ['Prompts per keyword', s.promptsPerKeyword + (Object.keys(s.promptsByKeyword || {}).length
       ? ` (default; ${Object.keys(s.promptsByKeyword).length} keyword(s) have their own count, see the Summary sheet)` : '')],
     ['Min quality score', s.minQualityScore], ['Keywords', (run?.keywords || s.keywords || []).length],

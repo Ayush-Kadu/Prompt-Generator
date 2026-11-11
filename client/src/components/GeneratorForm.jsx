@@ -49,6 +49,11 @@ export default function GeneratorForm({ meta, form, setForm, onSubmit, busy, onE
   const splitByNumber = form.brandMode === 'mixed' && form.brandedSplit === 'count';
   const toBranded = (v) => Math.max(0, Math.min(perLanguage, Math.round(Number(v)) || 0));
   const brandedNumber = toBranded(form.brandedNumber);
+  // Mixed sentiment "By number": exact positive and negative counts; neutral is the rest of the total.
+  const sentimentByNumber = form.sentiment === 'mixed' && form.sentimentSplit === 'count';
+  const positiveNumber = toBranded(form.sentimentPositive);
+  const negativeNumber = Math.min(toBranded(form.sentimentNegative), perLanguage - positiveNumber);
+  const neutralNumber = perLanguage - positiveNumber - negativeNumber;
   const brandedCount = form.brandMode === 'branded' ? form.promptsPerKeyword
     : form.brandMode === 'mixed' ? Math.round((form.promptsPerKeyword * form.brandedRatio) / 100) : 0;
 
@@ -222,7 +227,11 @@ export default function GeneratorForm({ meta, form, setForm, onSubmit, busy, onE
   const submit = (e) => {
     e.preventDefault();
     if (!busy && keywords.length && !tooMany && (!needsBrand || form.brandName.trim())) {
-      onSubmit({ ...llmBody, ...(splitByNumber ? { brandedCount: brandedNumber } : {}) });
+      onSubmit({
+        ...llmBody,
+        ...(splitByNumber ? { brandedCount: brandedNumber } : {}),
+        ...(sentimentByNumber ? { sentimentCounts: { positive: positiveNumber, negative: negativeNumber } } : {}),
+      });
     }
   };
 
@@ -445,6 +454,38 @@ export default function GeneratorForm({ meta, form, setForm, onSubmit, busy, onE
           <Segmented value={form.sentiment} onChange={(v) => set({ sentiment: v })}
             options={Object.keys(meta?.sentiments || { neutral: 1 }).map((s) => [s, s[0].toUpperCase() + s.slice(1)])} />
           <small>{meta?.sentiments?.[form.sentiment]}</small>
+          {form.sentiment === 'mixed' && (
+            <div className="ratio">
+              <Segmented value={sentimentByNumber ? 'count' : 'balanced'}
+                onChange={(v) => set({
+                  sentimentSplit: v,
+                  // Start "By number" from an even three-way split of the current total.
+                  ...(v === 'count' && !sentimentByNumber
+                    ? { sentimentPositive: Math.floor(perLanguage / 3), sentimentNegative: Math.floor(perLanguage / 3) }
+                    : {}),
+                })}
+                options={[['balanced', 'Balanced mix'], ['count', 'By number']]} />
+              {sentimentByNumber && (
+                <>
+                  <div className="split-counts">
+                    <label>
+                      Positive
+                      <input type="number" min={0} max={perLanguage} step={1} value={positiveNumber}
+                        onChange={(e) => set({ sentimentPositive: toBranded(e.target.value) })} />
+                    </label>
+                    <label>
+                      Negative
+                      <input type="number" min={0} max={perLanguage - positiveNumber} step={1} value={negativeNumber}
+                        onChange={(e) => set({ sentimentNegative: Math.min(toBranded(e.target.value), perLanguage - positiveNumber) })} />
+                    </label>
+                    <span>Neutral <b>{neutralNumber}</b></span>
+                    <span className="muted">of {perLanguage} prompts{languages.length > 1 ? ' per language' : ''}</span>
+                  </div>
+                  <small>Neutral gets whatever positive and negative leave. Each keyword gets its share of each sentiment.</small>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="grid2">

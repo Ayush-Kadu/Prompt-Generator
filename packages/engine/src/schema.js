@@ -53,6 +53,12 @@ export const GenerateSchema = z.object({
   brandedCount: z.number().int().min(0).max(LIMITS.maxTotalPrompts).optional(),
   intents: z.array(z.enum(Object.keys(INTENTS))).optional().default([]),
   sentiment: z.enum(Object.keys(SENTIMENTS)).default('neutral'),
+  /** Mixed sentiment only: exact numbers in the total (per language). `neutral` left out = the rest. */
+  sentimentCounts: z.object({
+    positive: z.number().int().min(0).max(LIMITS.maxTotalPrompts),
+    negative: z.number().int().min(0).max(LIMITS.maxTotalPrompts),
+    neutral: z.number().int().min(0).max(LIMITS.maxTotalPrompts).optional(),
+  }).optional(),
   topic: text(200),
   context: text(LIMITS.maxContext),
   instruction: text(LIMITS.maxInstruction),
@@ -168,6 +174,20 @@ export function normalizeGenerateRequest(input) {
   if (brandedCount !== null && brandedCount > perLanguage) {
     throw new EngineValidationError([`brandedCount: ${brandedCount} is more than the ${perLanguage} prompts requested${languages.length > 1 ? ' per language' : ''}.`]);
   }
+  // Exact sentiment numbers only mean something for mixed sentiment; they must add up to the total.
+  let sentimentCounts = null;
+  if (r.sentiment === 'mixed' && r.sentimentCounts) {
+    const { positive, negative } = r.sentimentCounts;
+    const neutral = r.sentimentCounts.neutral ?? perLanguage - positive - negative;
+    const each = languages.length > 1 ? ' per language' : '';
+    if (neutral < 0) {
+      throw new EngineValidationError([`sentimentCounts: ${positive} positive + ${negative} negative is more than the ${perLanguage} prompts requested${each}.`]);
+    }
+    if (positive + negative + neutral !== perLanguage) {
+      throw new EngineValidationError([`sentimentCounts: ${positive} + ${neutral} + ${negative} must add up to the ${perLanguage} prompts requested${each}.`]);
+    }
+    sentimentCounts = { positive, neutral, negative };
+  }
   return {
     ...r,
     brand,
@@ -176,6 +196,7 @@ export function normalizeGenerateRequest(input) {
     language: languages[0],
     promptsByKeyword,
     brandedCount,
+    sentimentCounts,
     intents: [...new Set(r.intents)],
     topic: normalizeInstruction(r.topic, 200) || '',
     context: normalizeInstruction(r.context, LIMITS.maxContext),

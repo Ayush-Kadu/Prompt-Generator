@@ -51,12 +51,13 @@ export function offlineGenerate(settings, batch) {
   const prompts = [];
 
   for (const kw of batch.keywords) {
-    const make = (count, branded) => {
+    // `forced`: write every prompt with this sentiment (exact sentiment numbers); otherwise cycle through them.
+    const make = (count, branded, forced) => {
       let made = 0;
       for (let i = 0; made < count && i < count * 15; i++) {
         const n = i + seed;
         const intent = intents[n % intents.length];
-        const sentiment = sentiments[n % sentiments.length];
+        const sentiment = forced || sentiments[n % sentiments.length];
         const pool = branded ? BRANDED : NON_BRANDED[intent] || NON_BRANDED.commercial;
         const pick = branded ? n % pool.length : Math.floor(n / intents.length) % pool.length;
         const base = fill(pool[pick], {
@@ -70,8 +71,15 @@ export function offlineGenerate(settings, batch) {
         made++;
       }
     };
-    make(batch.nonBranded, false);
-    make(batch.branded, true);
+    if (batch.cells) {
+      for (const s of ['positive', 'neutral', 'negative']) {
+        make(batch.cells.nonBranded[s], false, s);
+        make(batch.cells.branded[s], true, s);
+      }
+    } else {
+      make(batch.nonBranded, false);
+      make(batch.branded, true);
+    }
   }
   return { prompts };
 }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  createPromptEngine, EngineValidationError, extractSiteSignals, inferIntent, normalizeInstruction, scorePrompt, LANGUAGES,
+  buildGenerationPrompt, createPromptEngine, EngineValidationError, extractSiteSignals, inferIntent, normalizeInstruction, scorePrompt, LANGUAGES,
 } from '../src/index.js';
 import { parseJsonReply } from '../src/llm.js';
 import { apportion } from '../src/schema.js';
@@ -117,6 +117,33 @@ test('mixed mode with an exact branded number: exact total, shared in proportion
   await assert.rejects(engine.generate({ ...base, brandedCount: 13 }), /more than the 12 prompts/);
   // Outside mixed mode the number is ignored.
   assert.equal((await engine.generate({ ...base, brandMode: 'non-branded', brandedCount: 5 })).stats.branded, 0);
+});
+
+test('mixed sentiment with exact numbers: exact totals, each keyword still gets its own count', async () => {
+  const engine = createPromptEngine();
+  const base = {
+    brand, keywords: ['custom cakes', 'cupcakes', 'eggless cakes'], promptsPerKeyword: 2, promptsByKeyword: { cupcakes: 6, 'eggless cakes': 4 },
+    brandMode: 'mixed', brandedCount: 5, sentiment: 'mixed',
+  };
+  const r = await engine.generate({ ...base, sentimentCounts: { positive: 3, negative: 4 } }); // neutral = the rest (5)
+  assert.deepEqual(r.stats.bySentiment, { positive: 3, neutral: 5, negative: 4 });
+  assert.equal(r.stats.branded, 5);
+  const count = (k) => r.prompts.filter((p) => p.keyword === k).length;
+  assert.deepEqual([count('custom cakes'), count('cupcakes'), count('eggless cakes')], [2, 6, 4]);
+  assert.deepEqual(r.settings.sentimentCounts, { positive: 3, neutral: 5, negative: 4 });
+
+  assert.deepEqual((await engine.generate({ ...base, sentimentCounts: { positive: 0, negative: 12 } })).stats.bySentiment, { positive: 0, neutral: 0, negative: 12 });
+  await assert.rejects(engine.generate({ ...base, sentimentCounts: { positive: 8, negative: 5 } }), /more than the 12 prompts/);
+  await assert.rejects(engine.generate({ ...base, sentimentCounts: { positive: 3, negative: 4, neutral: 1 } }), /must add up to the 12/);
+  // The model is asked for exact counts per brand group and sentiment.
+  const ask = buildGenerationPrompt({ ...r.settings, profile: null }, {
+    keywords: ['cupcakes'], branded: 2, nonBranded: 4,
+    cells: { branded: { positive: 1, neutral: 1, negative: 0 }, nonBranded: { positive: 0, neutral: 3, negative: 1 } },
+  });
+  assert.match(ask, /3 NON-BRANDED NEUTRAL, 1 NON-BRANDED NEGATIVE, 1 BRANDED \(mention "Sweet Crumbs"\) POSITIVE, 1 BRANDED \(mention "Sweet Crumbs"\) NEUTRAL\./);
+  // Other sentiments ignore the numbers.
+  const neutralRun = await engine.generate({ ...base, sentiment: 'neutral', sentimentCounts: { positive: 3, negative: 4 } });
+  assert.equal(neutralRun.settings.sentimentCounts, null);
 });
 
 test('apportion shares a total exactly and never over a size', () => {
