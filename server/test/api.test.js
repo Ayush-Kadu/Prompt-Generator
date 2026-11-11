@@ -35,7 +35,7 @@ test('meta lists providers, languages and the default provider', async (t) => {
 test('sync generate through a provider adapter', async (t) => {
   const { server, call } = await start();
   t.after(() => server.close());
-  const res = await call('/prompts/generate', { method: 'POST', body: { keywords: ['crm software', 'email tools'], promptsPerKeyword: 3, brand: { name: 'Acme' } } });
+  const res = await call('/prompts/generate', { method: 'POST', body: { keywords: ['crm software', 'email tools'], promptsPerKeyword: 3, brand: { name: 'Acme' }, relevanceCheck: false } });
   const r = await res.json();
   assert.equal(res.status, 200, JSON.stringify(r));
   assert.equal(r.provider, 'openai');

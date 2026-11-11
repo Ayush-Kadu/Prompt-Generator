@@ -14,7 +14,7 @@ import { analyzeBrand } from './modules/brandAnalysis.js';
 import { categorizePrompts } from './modules/categorization.js';
 import { extractKeywords } from './modules/keywordExtraction.js';
 import { generateRecommendations } from './modules/recommendations.js';
-import { scorePrompts } from './modules/qualityScoring.js';
+import { relevanceTerms, scorePrompts } from './modules/qualityScoring.js';
 import {
   AnalyzeBrandSchema, EngineValidationError, ExtractKeywordsSchema, ScoreSchema, normalizeBrand, normalizeGenerateRequest, parse, promptsFor,
 } from './schema.js';
@@ -49,6 +49,10 @@ function mergeLanguageResults(results) {
       nonBranded: prompts.filter((p) => p.category === 'Non-branded').length,
       bySentiment: Object.fromEntries(['positive', 'neutral', 'negative'].map((s) => [s, prompts.filter((p) => p.sentiment === s).length])),
       averageScore: prompts.length ? Math.round(prompts.reduce((a, p) => a + p.score, 0) / prompts.length) : 0,
+      averageRelevance: (() => {
+        const judged = prompts.filter((p) => typeof p.relevance === 'number');
+        return judged.length ? Math.round(judged.reduce((a, p) => a + p.relevance, 0) / judged.length) : null;
+      })(),
       byLanguage,
     },
   };
@@ -62,9 +66,9 @@ export {
 export { normalizeInstruction } from './modules/instructions.js';
 export { brandMatcher, promptKey } from './text.js';
 export { inferIntent, inferSentiment } from './modules/categorization.js';
-export { scorePrompt, SCORE_WEIGHTS } from './modules/qualityScoring.js';
+export { scorePrompt, SCORE_WEIGHTS, LOW_RELEVANCE, relevanceTerms, lexicalRelevance } from './modules/qualityScoring.js';
 export { extractSiteSignals } from './modules/brandAnalysis.js';
-export { buildGenerationPrompt, GENERATION_SYSTEM } from './modules/recommendations.js';
+export { buildGenerationPrompt, GENERATION_SYSTEM, buildRelevancePrompt, RELEVANCE_SYSTEM } from './modules/recommendations.js';
 
 export const ENGINE_VERSION = '1.0.0';
 
@@ -199,9 +203,11 @@ export function createPromptEngine(options = {}) {
     score(input) {
       const req = parse(ScoreSchema, input);
       const brand = normalizeBrand(req.brand);
+      // A caller's own relevance numbers are not trusted; relevance here is the context match only.
       const categorized = categorizePrompts(req.prompts, { brand, intents: req.intents })
-        .map((p, i) => ({ ...p, category: req.prompts[i].category || p.category }));
-      const prompts = scorePrompts(categorized, { brand });
+        .map(({ relevance: _r, relevanceSource: _s, ...p }, i) => ({ ...p, category: req.prompts[i].category || p.category }));
+      const terms = relevanceTerms({ brand, keywords: uniqueStrings(req.prompts.map((p) => p.keyword)) });
+      const prompts = scorePrompts(categorized, { brand, terms });
       const averageScore = Math.round(prompts.reduce((a, p) => a + p.score, 0) / prompts.length);
       return { prompts, averageScore };
     },

@@ -388,6 +388,14 @@ export default function GeneratorForm({ meta, form, setForm, onSubmit, busy, onE
               onChange={(e) => set({ minQualityScore: Number(e.target.value) })} />
           </label>
         </div>
+        <label className="check-row">
+          <input type="checkbox" checked={provider.id !== 'offline' && form.relevanceCheck !== false} disabled={provider.id === 'offline'}
+            onChange={(e) => set({ relevanceCheck: e.target.checked })} />
+          <span>
+            AI relevance check: rate how closely each prompt fits the brand&apos;s industry, offerings and customers
+            (one small extra AI call per batch). Off = match against the business context only.
+          </span>
+        </label>
 
         {keywords.length > 0 && (
           <details className="per-keyword">

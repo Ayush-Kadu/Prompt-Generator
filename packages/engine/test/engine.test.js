@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildGenerationPrompt, createPromptEngine, EngineValidationError, GENERATION_SYSTEM, extractSiteSignals, inferIntent, normalizeInstruction, scorePrompt, LANGUAGES,
+  buildGenerationPrompt, buildRelevancePrompt, createPromptEngine, EngineValidationError, GENERATION_SYSTEM, RELEVANCE_SYSTEM, SCORE_WEIGHTS, relevanceTerms, extractSiteSignals, inferIntent, normalizeInstruction, scorePrompt, LANGUAGES,
 } from '../src/index.js';
 import { parseJsonReply } from '../src/llm.js';
 import { apportion } from '../src/schema.js';
@@ -72,9 +72,71 @@ test('batches ask for about 20 prompts per call', async () => {
     const prompts = kws.flatMap((k) => [1, 2, 3, 4, 5].map((i) => ({ keyword: k, prompt: `which ${k} option suits a team of ${i}0 people?` })));
     return { text: JSON.stringify({ prompts }) };
   };
-  const r = await createPromptEngine({ llm }).generate({ keywords: Array.from({ length: 10 }, (_, i) => `tool${i}`), promptsPerKeyword: 5 });
+  const r = await createPromptEngine({ llm }).generate({ keywords: Array.from({ length: 10 }, (_, i) => `tool${i}`), promptsPerKeyword: 5, relevanceCheck: false });
   assert.equal(r.prompts.length, 50);
   assert.deepEqual(perCall, [4, 4, 2]); // 4 keywords × 5 = 20 prompts per call (was 8 × 5 = 40)
+});
+
+const WATER = {
+  brand: { name: 'AquaClean', industry: 'Water and wastewater treatment' },
+  profile: { offerings: ['sewage treatment plants', 'effluent treatment for industries'], audience: ['factory owners', 'municipal engineers'] },
+};
+
+test('relevance is the largest part of the score: context match against the business terms', () => {
+  const terms = relevanceTerms({ ...WATER, keywords: ['sewage treatment plant'] });
+  const kw = 'sewage treatment plant';
+  const inContext = scorePrompt({ text: 'Which effluent and sewage treatment plant setup suits a textile factory with 300 workers?', keyword: kw }, { terms });
+  const offContext = scorePrompt({ text: 'Is there a sewage treatment plant near the picnic spot for our school trip?', keyword: kw }, { terms });
+  assert.equal(SCORE_WEIGHTS.relevance, 35);
+  assert.equal(inContext.relevance, 100);
+  assert.equal(inContext.relevanceSource, 'context');
+  assert.equal(offContext.relevance, 0);
+  assert.ok(offContext.flags.includes('low-relevance'));
+  assert.ok(inContext.score - offContext.score >= 30, `${inContext.score} vs ${offContext.score}`);
+  assert.ok(!relevanceTerms({ brand: { name: 'AquaClean' } }).has('aquaclean')); // the brand name is not relevance
+  // Nothing known about the business → relevance unknown, score from the other checks only.
+  const unknown = scorePrompt({ text: 'Which sewage treatment plant suits a 300-worker factory?', keyword: kw }, {});
+  assert.equal(unknown.relevanceSource, 'unknown');
+  assert.equal(unknown.relevance, null);
+});
+
+test('AI relevance check: off-topic prompts score low, fall under minQualityScore and get replaced', async () => {
+  const calls = { generate: 0, rate: 0 };
+  const llm = async ({ system, user }) => {
+    if (system === RELEVANCE_SYSTEM) {
+      calls.rate++;
+      const lines = [...user.matchAll(/^\d+\. \[.*?\] (.+)$/gm)].map((m) => m[1]);
+      return { text: JSON.stringify({ scores: lines.map((t) => (/factory|plant operator/i.test(t) ? 9 : 0)) }) };
+    }
+    calls.generate++;
+    return { text: JSON.stringify({ prompts: [
+      { keyword: 'sewage treatment plant', prompt: `Is there a sewage treatment plant near the picnic spot for school trip ${calls.generate}?` },
+      { keyword: 'sewage treatment plant', prompt: `Can kids visit a sewage treatment plant during summer camp ${calls.generate}?` },
+      { keyword: 'sewage treatment plant', prompt: `Which sewage treatment plant design suits a dairy factory with ${calls.generate}00 workers?` },
+      { keyword: 'sewage treatment plant', prompt: `As a plant operator, how often should a sewage treatment plant of ${calls.generate} MLD be serviced?` },
+    ] }) };
+  };
+  const r = await createPromptEngine({ llm }).generate({
+    brand: WATER.brand, context: 'We build sewage and effluent treatment plants for factories.', keywords: ['sewage treatment plant'],
+    promptsPerKeyword: 2, minQualityScore: 75,
+  });
+  assert.equal(r.prompts.length, 2);
+  assert.ok(r.prompts.every((p) => p.relevanceSource === 'ai' && p.relevance === 90), JSON.stringify(r.prompts.map((p) => [p.text, p.relevance])));
+  assert.ok(r.prompts.every((p) => /factory|plant operator/i.test(p.text)));
+  assert.ok(r.stats.lowQuality >= 2);
+  assert.equal(r.stats.averageRelevance, 90);
+  assert.equal(calls.rate, calls.generate); // one rating call per batch
+  assert.match(buildRelevancePrompt({ ...r.settings, profile: null }, [{ keyword: 'k', prompt: 'p' }]), /We build sewage and effluent/);
+
+  // Unusable rating reply → the context match is used instead; relevanceCheck off → no rating calls at all.
+  const garbage = async ({ system }) => ({ text: system === RELEVANCE_SYSTEM ? 'no idea' : JSON.stringify({ prompts: [{ keyword: 'sewage treatment plant', prompt: 'Which sewage treatment plant suits an effluent-heavy factory?' }] }) });
+  const g = await createPromptEngine({ llm: garbage }).generate({ brand: WATER.brand, context: 'Effluent treatment for factories.', keywords: ['sewage treatment plant'], promptsPerKeyword: 1 });
+  assert.equal(g.prompts[0].relevanceSource, 'context');
+  assert.ok(g.stats.relevanceUnrated >= 1);
+  let rated = 0;
+  const counting = async ({ system }) => { if (system === RELEVANCE_SYSTEM) rated++; return garbage({ system }); };
+  await createPromptEngine({ llm: counting }).generate({ keywords: ['sewage treatment plant'], promptsPerKeyword: 1, relevanceCheck: false });
+  assert.equal(rated, 0);
 });
 
 test('natural phrasing accepts first-person prompts', () => {

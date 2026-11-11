@@ -151,7 +151,7 @@ export default function ResultsTable({ run, meta, prompts, setPrompts, onSave, o
     const text = editing.text.trim();
     if (!text) return;
     if (prompts.some((p) => p.id !== editing.id && promptKey(p.text) === promptKey(text))) { setNote('That prompt already exists.'); return; }
-    update(editing.id, { text, category: isBranded(text) ? 'Branded' : 'Non-branded', score: undefined, grade: undefined, flags: ['edited'] });
+    update(editing.id, { text, category: isBranded(text) ? 'Branded' : 'Non-branded', score: undefined, grade: undefined, relevance: undefined, relevanceSource: undefined, flags: ['edited'] });
     setEditing(null);
     setNote('');
   };
@@ -245,6 +245,7 @@ export default function ResultsTable({ run, meta, prompts, setPrompts, onSave, o
               <th className="check"><input type="checkbox" checked={allFilteredSelected} onChange={toggleAll} aria-label="Select all matching prompts (every page)" title="Select all matching prompts, on every page" /></th>
               <th>Prompt</th><th>Keyword</th><th>Category</th><th>Intent</th><th>Sentiment</th>
               <th><button type="button" className="th-sort" onClick={() => { setSortByScore((s) => !s); setPage(0); }} aria-pressed={sortByScore}>Score {sortByScore ? '↓' : '↕'}</button></th>
+              <th title="How closely the prompt relates to the brand's industry, offerings and customers (0–100)">Relevance</th>
               <th />
             </tr>
           </thead>
@@ -279,13 +280,23 @@ export default function ResultsTable({ run, meta, prompts, setPrompts, onSave, o
                     ? <span className={`score g${p.grade || gradeOf(p.score)}`} title={p.flags?.length ? `Flags: ${p.flags.join(', ')}` : 'No issues'}>{p.score}</span>
                     : <span className="muted">—</span>}
                 </td>
+                <td>
+                  {typeof p.relevance === 'number'
+                    ? (
+                      <span className={`relevance ${p.relevance < 40 ? 'low' : p.relevance < 70 ? 'mid' : 'high'}`}
+                        title={p.relevanceSource === 'ai' ? 'Rated by the AI relevance check' : 'Matched against the business context'}>
+                        {p.relevance}
+                      </span>
+                    )
+                    : <span className="muted" title="Not enough business context to judge">—</span>}
+                </td>
                 <td className="row-actions">
                   <button type="button" className="icon" title="Edit" aria-label="Edit prompt" onClick={() => setEditing({ id: p.id, text: p.text })}>✎</button>
                   <button type="button" className="icon" title="Delete" aria-label="Delete prompt" onClick={() => remove(p.id)}>✕</button>
                 </td>
               </tr>
             ))}
-            {!visible.length && <tr><td colSpan={8} className="empty">No prompts match these filters.</td></tr>}
+            {!visible.length && <tr><td colSpan={9} className="empty">No prompts match these filters.</td></tr>}
           </tbody>
         </table>
       </div>

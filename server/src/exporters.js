@@ -20,6 +20,7 @@ const PROMPT_COLUMNS = [
   { header: 'Intent', key: 'intent', width: 15 },
   { header: 'Sentiment', key: 'sentiment', width: 12 },
   { header: 'Quality score', key: 'score', width: 13 },
+  { header: 'Relevance', key: 'relevance', width: 11 },
   { header: 'Grade', key: 'grade', width: 8 },
   { header: 'Flags', key: 'flags', width: 24 },
   { header: 'Topic', key: 'topic', width: 20 },
@@ -62,6 +63,11 @@ export async function buildWorkbook({ run, prompts }) {
   };
   const avg = prompts.length ? Math.round(prompts.reduce((a, p) => a + (p.score || 0), 0) / prompts.length) : 0;
   sum.addRow({ g: 'Total', v: '', c: prompts.length, a: avg });
+  const judged = prompts.filter((p) => typeof p.relevance === 'number');
+  if (judged.length) {
+    sum.addRow({ g: 'Relevance', v: 'average (0–100)', c: judged.length, a: Math.round(judged.reduce((a, p) => a + p.relevance, 0) / judged.length) });
+    sum.addRow({ g: 'Relevance', v: 'low-relevance prompts', c: prompts.filter((p) => (p.flags || []).includes('low-relevance')).length, a: '' });
+  }
   for (const field of ['category', 'intent', 'sentiment', 'grade', 'language', 'keyword']) {
     for (const [v, e] of groupBy(field)) sum.addRow({ g: field[0].toUpperCase() + field.slice(1), v, c: e.c, a: Math.round(e.t / e.c) });
   }
@@ -84,6 +90,7 @@ export async function buildWorkbook({ run, prompts }) {
       ? ` (default; ${Object.keys(s.promptsByKeyword).length} keyword(s) have their own count, see the Summary sheet)` : '')],
     ['Min quality score', s.minQualityScore], ['Keywords', (run?.keywords || s.keywords || []).length],
     ['Provider / model', run?.provider ? `${run.provider} / ${run.model}` : ''],
+    ['Relevance check', s.relevanceCheck === false ? 'off (context match only)' : 'AI rating when a provider is used, otherwise context match'],
     ['LLM calls / tokens', run?.usage ? `${run.usage.calls} calls · ${run.usage.inputTokens} in / ${run.usage.outputTokens} out` : ''],
   ].forEach(([k, v]) => st.addRow({ k, v: v ?? '' }));
   st.getColumn('v').alignment = { wrapText: true, vertical: 'top' };

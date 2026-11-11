@@ -150,6 +150,8 @@ export function createV1Router({ registry, config }) {
     score: z.number().min(0).max(100).optional(),
     grade: z.string().max(2).optional(),
     flags: z.array(z.string().max(40)).max(20).optional().default([]),
+    relevance: z.number().min(0).max(100).nullable().optional(),
+    relevanceSource: z.enum(['ai', 'context', 'unknown']).optional(),
     topic: z.string().max(200).optional().default(''),
     location: z.string().max(100).optional().default(''),
     language: z.string().max(40).optional().default('English'),

@@ -185,3 +185,9 @@ code { font-size: 0.8em; background: var(--accent-soft); padding: 1px 4px; borde
 .split-counts .muted { margin: 0; font-size: 0.8rem; }
 .counts-actions { margin: 6px 0 2px; }
 .per-keyword .note { margin: 4px 0; font-size: 0.8rem; }
+
+/* Relevance to the brand (0–100) */
+.relevance { display: inline-block; min-width: 34px; text-align: center; font-weight: 600; font-size: 0.78rem; padding: 2px 6px; border-radius: 6px; cursor: help; }
+.relevance.high { background: var(--nb-bg); color: var(--nb); }
+.relevance.mid { background: var(--accent-soft); color: var(--accent); }
+.relevance.low { background: var(--branded-bg); color: var(--danger); }

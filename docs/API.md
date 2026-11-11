@@ -38,6 +38,7 @@ Every endpoint that calls a model accepts optional `"provider"` and `"model"`:
 | `promptsPerKeyword` | 1–25 | 5 | Default count for every keyword |
 | `promptsByKeyword` | object | `{}` | Own count (1–25) for individual keywords, e.g. `{"custom cakes": 10, "cupcakes": 3}`. Keys match keywords case-insensitively; unknown keys are ignored; other keywords use `promptsPerKeyword`. The size limits count these numbers |
 | `minQualityScore` | 0–100 | 0 | Prompts scoring lower are rejected and re-requested |
+| `relevanceCheck` | bool | `true` | With an AI provider, one small extra call per batch rates each prompt's relevance to the business (0–10 → `relevance` 0–100, `relevanceSource: "ai"`). Off, or offline: relevance comes from matching the business's industry, offerings, audience, context and keywords (`"context"`). Relevance is 35 of the 100 quality points |
 
 ## Prompt object
 
@@ -46,7 +47,7 @@ Every endpoint that calls a model accepts optional `"provider"` and `"model"`:
   "id": "uuid", "text": "which bakery in Pune does the best eggless custom cakes?",
   "keyword": "custom cakes", "category": "Non-branded",
   "intent": "commercial", "intentSource": "model", "sentiment": "neutral",
-  "score": 90, "grade": "A", "flags": [],
+  "score": 90, "grade": "A", "flags": [], "relevance": 90, "relevanceSource": "ai",
   "topic": "", "location": "Pune", "language": "English",
   "source": "ai", "selected": true
 }

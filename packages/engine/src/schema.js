@@ -70,6 +70,8 @@ export const GenerateSchema = z.object({
   /** Optional count for individual keywords ({ "custom cakes": 10 }); others use promptsPerKeyword. Keys match case-insensitively. */
   promptsByKeyword: z.record(z.string().max(200), z.number().int().min(1).max(LIMITS.maxPerKeyword)).optional().default({})
     .refine((m) => Object.keys(m).length <= LIMITS.maxKeywords * 2, `at most ${LIMITS.maxKeywords * 2} entries`),
+  /** With an AI provider: one extra small call per batch rates each prompt's relevance to the business. */
+  relevanceCheck: z.boolean().default(true),
   /** Prompts scoring below this are rejected and re-requested (0 keeps all). */
   minQualityScore: z.number().int().min(0).max(100).default(0),
 });

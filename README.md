@@ -52,7 +52,7 @@ Open http://localhost:5173 (UI). The API is at http://localhost:5000/api/v1.
 | `instructions` | Cleans user text (instruction, context, site content) and wraps it in sandbox tags, so it can steer topic, angle, audience or market but never the rules, counts or format | n/a |
 | `recommendations` | Plan → batch (about 20 prompts per call) → generate → accept/reject → dedupe → top up shortfalls (2 rounds) → fallback, so no keyword is ever empty | Template generator |
 | `categorization` | **Branded vs non-branded** from the text (name, aliases, domain), never the model's label. Intent and sentiment are kept from the model when valid, otherwise inferred by rules | Rules |
-| `qualityScoring` | 0–100 score: keyword coverage 25, natural length 15, natural phrasing 15, specificity 15, uniqueness vs siblings 20, brand compliance 10. Gives a grade (A–D) and flags (`too-short`, `near-duplicate`, `brand-leak`, …). `minQualityScore` rejects and re-requests weak prompts | Same (deterministic) |
+| `qualityScoring` | 0–100 score: **relevance to the business 35** (industry, offerings, customers), keyword coverage 20, uniqueness vs siblings 15, natural phrasing 10, specificity 10, natural length 5, brand compliance 5. Relevance comes from an AI rating (one small call per batch, `relevanceCheck`) or, without one, from matching the business's own terms. Gives a grade (A–D) and flags (`low-relevance`, `too-short`, `near-duplicate`, `brand-leak`, …). `minQualityScore` rejects and re-requests weak prompts | Context match only |
 
 ### Using the engine from another Node app
 

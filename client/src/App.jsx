@@ -7,7 +7,7 @@ import History from './components/History.jsx';
 
 const DEFAULT_FORM = {
   provider: '', model: '',
-  name: '', keywords: '', promptsPerKeyword: 5, promptCounts: {}, minQualityScore: 0,
+  name: '', keywords: '', promptsPerKeyword: 5, promptCounts: {}, minQualityScore: 0, relevanceCheck: true,
   brandName: '', brandWebsite: '', brandIndustry: '', brandDescription: '', brandAliases: '', competitors: '',
   brandMode: 'non-branded', brandedRatio: 30, brandedSplit: 'ratio', brandedNumber: 0, analyzeWebsite: false,
   sentimentSplit: 'balanced', sentimentPositive: 0, sentimentNegative: 0,
@@ -113,6 +113,7 @@ export default function App() {
         instruction: form.instruction,
         promptsPerKeyword: Number(form.promptsPerKeyword),
         minQualityScore: Number(form.minQualityScore),
+        relevanceCheck: form.relevanceCheck !== false,
       });
       setActiveRunId(runId);
       refreshRuns();

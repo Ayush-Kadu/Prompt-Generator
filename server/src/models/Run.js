@@ -12,6 +12,8 @@ const PromptSchema = new mongoose.Schema(
     score: Number,
     grade: String,
     flags: [String],
+    relevance: Number,          // 0–100, how closely the prompt relates to the business; null = unknown
+    relevanceSource: String,    // ai | context | unknown
     topic: String,
     location: String,
     language: String,
