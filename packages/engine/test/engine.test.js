@@ -64,6 +64,19 @@ test('generation instructions: purpose of non-branded prompts, grounding, people
   assert.match(buildGenerationPrompt({ ...settings, brand: { ...settings.brand, industry: '' }, profile: null }, batch), /Little is known about this business/);
 });
 
+test('batches ask for about 20 prompts per call', async () => {
+  const perCall = [];
+  const llm = async ({ user }) => {
+    const kws = [...user.matchAll(/^\d+\. (.+)$/gm)].map((m) => m[1]);
+    perCall.push(kws.length);
+    const prompts = kws.flatMap((k) => [1, 2, 3, 4, 5].map((i) => ({ keyword: k, prompt: `which ${k} option suits a team of ${i}0 people?` })));
+    return { text: JSON.stringify({ prompts }) };
+  };
+  const r = await createPromptEngine({ llm }).generate({ keywords: Array.from({ length: 10 }, (_, i) => `tool${i}`), promptsPerKeyword: 5 });
+  assert.equal(r.prompts.length, 50);
+  assert.deepEqual(perCall, [4, 4, 2]); // 4 keywords × 5 = 20 prompts per call (was 8 × 5 = 40)
+});
+
 test('natural phrasing accepts first-person prompts', () => {
   const s = scorePrompt({ text: 'We export 40 tonnes of grapes a month, what should we check in a cold storage provider', keyword: 'cold storage provider' });
   assert.ok(!s.flags.includes('keyword-stuffed'), s.flags.join());

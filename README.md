@@ -50,7 +50,7 @@ Open http://localhost:5173 (UI). The API is at http://localhost:5000/api/v1.
 | `brandAnalysis` | Fetches the website (SSRF-guarded, size and time limits), extracts title/meta/headings/text, builds a `BrandProfile`: industry, description, offerings, audience, location, competitors, keywords | Profile from page metadata |
 | `keywordExtraction` | Non-branded keywords from the profile, site content and seed keywords. The brand name is always filtered out | Phrase-frequency extractor |
 | `instructions` | Cleans user text (instruction, context, site content) and wraps it in sandbox tags, so it can steer topic, angle, audience or market but never the rules, counts or format | n/a |
-| `recommendations` | Plan → batch (about 40 prompts per call) → generate → accept/reject → dedupe → top up shortfalls (2 rounds) → fallback, so no keyword is ever empty | Template generator |
+| `recommendations` | Plan → batch (about 20 prompts per call) → generate → accept/reject → dedupe → top up shortfalls (2 rounds) → fallback, so no keyword is ever empty | Template generator |
 | `categorization` | **Branded vs non-branded** from the text (name, aliases, domain), never the model's label. Intent and sentiment are kept from the model when valid, otherwise inferred by rules | Rules |
 | `qualityScoring` | 0–100 score: keyword coverage 25, natural length 15, natural phrasing 15, specificity 15, uniqueness vs siblings 20, brand compliance 10. Gives a grade (A–D) and flags (`too-short`, `near-duplicate`, `brand-leak`, …). `minQualityScore` rejects and re-requests weak prompts | Same (deterministic) |
 

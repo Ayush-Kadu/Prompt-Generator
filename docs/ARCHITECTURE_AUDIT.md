@@ -25,7 +25,7 @@ Legend: ✅ met · 🟡 partial · ❌ missing
 |---|---|---|
 | No thousands of keywords in one HTTP request | 🟡 | `/prompts/generate` is capped at 500 *prompts* (`server/src/api/v1.js:74`), but that could still be 500 keywords at 1 prompt each, processed inside the request |
 | Redis + BullMQ | ❌ | `server/src/jobs.js:5-7` is an in-process array queue |
-| Configurable batches | 🟡 | Batching exists, but `PROMPTS_PER_CALL = 40` and `MAX_TOPUP_ROUNDS = 2` are hard-coded constants (`recommendations.js:15-16`) |
+| Configurable batches | 🟡 | Batching exists, but `PROMPTS_PER_CALL = 20` (was 40) and `MAX_TOPUP_ROUNDS = 2` are hard-coded constants (`recommendations.js:15-16`) |
 | Independently scalable workers | ❌ | Generation runs inside the API process |
 | Persisted job and batch state | ❌ | Progress lives in an in-memory `Map`. Batches are never persisted; only the final run document is |
 

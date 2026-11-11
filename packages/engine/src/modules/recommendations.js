@@ -13,7 +13,10 @@ import { SANDBOX_RULE, renderSteering } from './instructions.js';
 import { offlineGenerate } from './offlineTemplates.js';
 import { scorePrompt, scorePrompts } from './qualityScoring.js';
 
-const PROMPTS_PER_CALL = 40;  // keep each reply small enough to stay reliable
+// Prompts asked for per model call. Smaller batches give each keyword more of the model's attention
+// (better grounded, less generic prompts) at the cost of more calls. A keyword that needs more than this
+// on its own still goes in one call.
+const PROMPTS_PER_CALL = 20;
 const MAX_TOPUP_ROUNDS = 2;   // extra rounds that only ask for what is still missing
 const AVOID_PER_KEYWORD = 15; // existing prompts shown to the model in top-up rounds
 const SENTIMENT_KEYS = ['positive', 'neutral', 'negative'];
