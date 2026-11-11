@@ -42,6 +42,10 @@ export default function GeneratorForm({ meta, form, setForm, onSubmit, busy, onE
     : keywords;
   const needsBrand = form.brandMode !== 'non-branded';
   const tooMany = total > limits.maxTotalPrompts || keywords.length > limits.maxKeywords;
+  // Mixed mode "By number": an exact branded count out of the total (per language); the rest are non-branded.
+  const splitByNumber = form.brandMode === 'mixed' && form.brandedSplit === 'count';
+  const toBranded = (v) => Math.max(0, Math.min(perLanguage, Math.round(Number(v)) || 0));
+  const brandedNumber = toBranded(form.brandedNumber);
   const brandedCount = form.brandMode === 'branded' ? form.promptsPerKeyword
     : form.brandMode === 'mixed' ? Math.round((form.promptsPerKeyword * form.brandedRatio) / 100) : 0;
 
@@ -158,7 +162,9 @@ export default function GeneratorForm({ meta, form, setForm, onSubmit, busy, onE
 
   const submit = (e) => {
     e.preventDefault();
-    if (!busy && keywords.length && !tooMany && (!needsBrand || form.brandName.trim())) onSubmit(llmBody);
+    if (!busy && keywords.length && !tooMany && (!needsBrand || form.brandName.trim())) {
+      onSubmit({ ...llmBody, ...(splitByNumber ? { brandedCount: brandedNumber } : {}) });
+    }
   };
 
   return (
@@ -229,9 +235,37 @@ export default function GeneratorForm({ meta, form, setForm, onSubmit, busy, onE
             options={[['non-branded', 'Non-branded'], ['branded', 'Branded'], ['mixed', 'Mixed']]} />
           {form.brandMode === 'mixed' && (
             <div className="ratio">
-              <input type="range" min={0} max={100} step={5} value={form.brandedRatio} aria-label="Branded share"
-                onChange={(e) => set({ brandedRatio: Number(e.target.value) })} />
-              <small>{form.brandedRatio}% branded → {brandedCount} branded + {form.promptsPerKeyword - brandedCount} non-branded per keyword</small>
+              <Segmented value={splitByNumber ? 'count' : 'ratio'}
+                onChange={(v) => set({
+                  brandedSplit: v,
+                  // Start "By number" from what the percentage gives today.
+                  ...(v === 'count' && !splitByNumber ? { brandedNumber: Math.round((perLanguage * form.brandedRatio) / 100) } : {}),
+                })}
+                options={[['ratio', 'By percentage'], ['count', 'By number']]} />
+              {splitByNumber ? (
+                <>
+                  <div className="split-counts">
+                    <label>
+                      Branded
+                      <input type="number" min={0} max={perLanguage} step={1} value={brandedNumber}
+                        onChange={(e) => set({ brandedNumber: toBranded(e.target.value) })} />
+                    </label>
+                    <label>
+                      Non-branded
+                      <input type="number" min={0} max={perLanguage} step={1} value={perLanguage - brandedNumber}
+                        onChange={(e) => set({ brandedNumber: perLanguage - toBranded(e.target.value) })} />
+                    </label>
+                    <span className="muted">of {perLanguage} prompts{languages.length > 1 ? ' per language' : ''}</span>
+                  </div>
+                  <small>Branded prompts are shared across keywords in proportion to each keyword's count.</small>
+                </>
+              ) : (
+                <>
+                  <input type="range" min={0} max={100} step={5} value={form.brandedRatio} aria-label="Branded share"
+                    onChange={(e) => set({ brandedRatio: Number(e.target.value) })} />
+                  <small>{form.brandedRatio}% branded → {brandedCount} branded + {form.promptsPerKeyword - brandedCount} non-branded per keyword</small>
+                </>
+              )}
             </div>
           )}
           {needsBrand && !form.brandName.trim() && <small className="error">Add a brand name for branded or mixed prompts.</small>}

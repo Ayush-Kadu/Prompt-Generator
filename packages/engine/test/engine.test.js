@@ -4,6 +4,7 @@ import {
   createPromptEngine, EngineValidationError, extractSiteSignals, inferIntent, normalizeInstruction, scorePrompt, LANGUAGES,
 } from '../src/index.js';
 import { parseJsonReply } from '../src/llm.js';
+import { apportion } from '../src/schema.js';
 import { assertPublicUrl } from '../src/modules/brandAnalysis.js';
 import { heuristicKeywords } from '../src/modules/keywordExtraction.js';
 
@@ -99,6 +100,30 @@ test('per-keyword prompt counts override the default; branded split and limits f
   const counts = Object.fromEntries(kws.slice(0, 400).map((k) => [k, 25]));
   await assert.rejects(engine.generate({ keywords: kws, promptsPerKeyword: 1, promptsByKeyword: counts }), /10001 prompts/);
   await assert.rejects(engine.generate({ keywords: ['a'], promptsByKeyword: { a: 26 } }), EngineValidationError);
+});
+
+test('mixed mode with an exact branded number: exact total, shared in proportion to keyword counts', async () => {
+  const engine = createPromptEngine();
+  const base = { brand, keywords: ['custom cakes', 'cupcakes', 'eggless cakes'], promptsPerKeyword: 2, promptsByKeyword: { cupcakes: 6, 'eggless cakes': 4 }, brandMode: 'mixed' };
+  const r = await engine.generate({ ...base, brandedCount: 5 });
+  const branded = (k) => r.prompts.filter((p) => p.keyword === k && p.category === 'Branded').length;
+  assert.equal(r.stats.branded, 5);
+  assert.equal(r.stats.nonBranded, 7);
+  // Quotas 0.83 / 2.5 / 1.67 → 0 / 2 / 1, then the two largest remainders (custom cakes, eggless cakes) get one more.
+  assert.deepEqual([branded('custom cakes'), branded('cupcakes'), branded('eggless cakes')], [1, 2, 2]);
+
+  assert.equal((await engine.generate({ ...base, brandedCount: 0 })).stats.branded, 0);
+  assert.equal((await engine.generate({ ...base, brandedCount: 12 })).stats.nonBranded, 0);
+  await assert.rejects(engine.generate({ ...base, brandedCount: 13 }), /more than the 12 prompts/);
+  // Outside mixed mode the number is ignored.
+  assert.equal((await engine.generate({ ...base, brandMode: 'non-branded', brandedCount: 5 })).stats.branded, 0);
+});
+
+test('apportion shares a total exactly and never over a size', () => {
+  assert.deepEqual(apportion(5, [2, 6, 4]), [1, 2, 2]);
+  assert.deepEqual(apportion(3, [1, 1, 1, 1]), [1, 1, 1, 0]);
+  assert.deepEqual(apportion(99, [2, 3]), [2, 3]);
+  assert.deepEqual(apportion(4, [0, 0]), [0, 0]);
 });
 
 test('offline mode collapses multiple languages to English with a warning', async () => {

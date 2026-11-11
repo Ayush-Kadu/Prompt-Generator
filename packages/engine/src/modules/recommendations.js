@@ -6,7 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import { INTENTS, SENTIMENTS } from '../constants.js';
 import { callJson } from '../llm.js';
-import { promptsFor } from '../schema.js';
+import { apportion, promptsFor } from '../schema.js';
 import { promptKey } from '../text.js';
 import { createCategorizer } from './categorization.js';
 import { SANDBOX_RULE, renderSteering } from './instructions.js';
@@ -136,16 +136,21 @@ export async function generateRecommendations(settings, deps = {}) {
   const brand = settings.brand;
   const hasBrand = Boolean(brand.name);
   const categorize = createCategorizer({ brand, intents: settings.intents });
-  // Each keyword has its own count (promptsByKeyword, else promptsPerKeyword), split by the brand mode.
-  const split = (n) => {
-    let brandedTarget = 0;
-    if (hasBrand && settings.brandMode === 'branded') brandedTarget = n;
-    else if (hasBrand && settings.brandMode === 'mixed') brandedTarget = Math.round((n * settings.brandedRatio) / 100);
-    return { brandedTarget, nonBrandedTarget: n - brandedTarget };
-  };
+  // Each keyword has its own count (promptsByKeyword, else promptsPerKeyword), split by the brand mode:
+  // all branded, none, a percentage of each keyword, or an exact branded number shared across keywords.
+  const sizes = settings.keywords.map((k) => promptsFor(settings, k));
+  let brandedSplit = sizes.map(() => 0);
+  if (hasBrand && settings.brandMode === 'branded') brandedSplit = sizes;
+  else if (hasBrand && settings.brandMode === 'mixed') {
+    brandedSplit = settings.brandedCount !== null && settings.brandedCount !== undefined
+      ? apportion(settings.brandedCount, sizes)
+      : sizes.map((n) => Math.round((n * settings.brandedRatio) / 100));
+  }
   const minScore = settings.minQualityScore || 0;
 
-  const buckets = new Map(settings.keywords.map((k) => [k.toLowerCase(), { keyword: k, ...split(promptsFor(settings, k)), branded: [], nonBranded: [] }]));
+  const buckets = new Map(settings.keywords.map((k, i) => [k.toLowerCase(), {
+    keyword: k, brandedTarget: brandedSplit[i], nonBrandedTarget: sizes[i] - brandedSplit[i], branded: [], nonBranded: [],
+  }]));
   const seen = new Set();
   const stats = { batches: 0, failedBatches: 0, rawCandidates: 0, duplicates: 0, wrongCategory: 0, lowQuality: 0, overflow: 0, unmatched: 0, fallback: 0 };
   const target = [...buckets.values()].reduce((a, b) => a + b.brandedTarget + b.nonBrandedTarget, 0);
@@ -197,11 +202,11 @@ export async function generateRecommendations(settings, deps = {}) {
     }))
     .filter((n) => n.branded + n.nonBranded > 0);
 
-  const sizes = [...buckets.values()].map((b) => b.brandedTarget + b.nonBrandedTarget);
   const first = buckets.values().next().value;
-  const shape = sizes.every((n) => n === sizes[0])
+  const brandedTotal = brandedSplit.reduce((a, n) => a + n, 0);
+  const shape = sizes.every((n) => n === sizes[0]) && brandedSplit.every((n) => n === brandedSplit[0])
     ? `${first.nonBrandedTarget} non-branded + ${first.brandedTarget} branded each`
-    : `${Math.min(...sizes)}–${Math.max(...sizes)} per keyword`;
+    : `${Math.min(...sizes)}–${Math.max(...sizes)} per keyword, ${target - brandedTotal} non-branded + ${brandedTotal} branded in total`;
   say(`Planning ${target} prompts for ${settings.keywords.length} keyword(s): ${shape}${llm ? '' : ' (offline templates — no LLM configured)'}.`);
 
   for (let round = 0; round <= MAX_TOPUP_ROUNDS; round++) {

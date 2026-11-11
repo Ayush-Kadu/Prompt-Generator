@@ -26,6 +26,7 @@ Every endpoint that calls a model accepts optional `"provider"` and `"model"`:
 | `analyzeWebsite` | bool | false | Analyse `brand.website` first, adding offerings, audience and competitors to the context |
 | `brandMode` | `non-branded` \| `branded` \| `mixed` | `non-branded` | `branded`/`mixed` require `brand.name` |
 | `brandedRatio` | 0–100 | 30 | Branded share in `mixed` mode |
+| `brandedCount` | int ≥ 0 | | `mixed` only: exact number of branded prompts in the total (per language); the rest are non-branded. Overrides `brandedRatio`. Shared across keywords in proportion to each keyword's count, so the total is exact. 400 if it is more than the total |
 | `intents` | string[] | all | `informational`, `commercial`, `transactional`, `comparison`, `local`, `review`, `navigational` |
 | `sentiment` | `neutral` \| `positive` \| `negative` \| `mixed` | `neutral` | |
 | `topic`, `location` | string | | |

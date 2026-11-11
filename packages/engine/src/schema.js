@@ -49,6 +49,8 @@ export const GenerateSchema = z.object({
   analyzeWebsite: z.boolean().default(false),
   brandMode: z.enum(BRAND_MODES).default('non-branded'),
   brandedRatio: z.number().int().min(0).max(100).default(30),
+  /** Mixed mode only: exact number of branded prompts in the total (per language). Overrides brandedRatio. */
+  brandedCount: z.number().int().min(0).max(LIMITS.maxTotalPrompts).optional(),
   intents: z.array(z.enum(Object.keys(INTENTS))).optional().default([]),
   sentiment: z.enum(Object.keys(SENTIMENTS)).default('neutral'),
   topic: text(200),
@@ -112,6 +114,26 @@ export function promptsFor(settings, keyword) {
   return Object.hasOwn(map, keyword) ? map[keyword] : settings.promptsPerKeyword;
 }
 
+/**
+ * Share `total` out over `sizes` in proportion to each size, as whole numbers that add
+ * up to exactly `total` (largest-remainder method). No share exceeds its size.
+ */
+export function apportion(total, sizes) {
+  const sum = sizes.reduce((a, n) => a + n, 0);
+  const want = Math.max(0, Math.min(total, sum));
+  if (!sum) return sizes.map(() => 0);
+  const quotas = sizes.map((n) => (want * n) / sum);
+  const shares = quotas.map(Math.floor);
+  let left = want - shares.reduce((a, n) => a + n, 0);
+  const byRemainder = quotas.map((q, i) => [q - shares[i], i]).sort((a, b) => b[0] - a[0] || a[1] - b[1]);
+  for (const [, i] of byRemainder) {
+    if (left <= 0) break;
+    shares[i]++;
+    left--;
+  }
+  return shares;
+}
+
 /** Total prompts a normalised request asks for, across keywords and languages. */
 export function expectedPrompts(s) {
   const perLanguage = s.keywords.length
@@ -140,6 +162,12 @@ export function normalizeGenerateRequest(input) {
   if (expected > LIMITS.maxTotalPrompts) {
     throw new EngineValidationError([`That is ${expected} prompts; the limit is ${LIMITS.maxTotalPrompts}. Reduce keywords, prompts per keyword or languages.`]);
   }
+  // An exact branded number only means something in mixed mode.
+  const brandedCount = r.brandMode === 'mixed' && r.brandedCount !== undefined ? r.brandedCount : null;
+  const perLanguage = expected / languages.length;
+  if (brandedCount !== null && brandedCount > perLanguage) {
+    throw new EngineValidationError([`brandedCount: ${brandedCount} is more than the ${perLanguage} prompts requested${languages.length > 1 ? ' per language' : ''}.`]);
+  }
   return {
     ...r,
     brand,
@@ -147,6 +175,7 @@ export function normalizeGenerateRequest(input) {
     languages,
     language: languages[0],
     promptsByKeyword,
+    brandedCount,
     intents: [...new Set(r.intents)],
     topic: normalizeInstruction(r.topic, 200) || '',
     context: normalizeInstruction(r.context, LIMITS.maxContext),

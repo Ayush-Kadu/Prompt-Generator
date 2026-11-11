@@ -177,3 +177,9 @@ code { font-size: 0.8em; background: var(--accent-soft); padding: 1px 4px; borde
 .kw-count { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; }
 .kw-count span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kw-count input { width: 72px; flex: none; padding: 4px 6px; }
+
+/* Mixed mode: exact branded / non-branded numbers */
+.split-counts { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 0.82rem; }
+.split-counts label { display: flex; align-items: center; gap: 6px; }
+.split-counts input { width: 80px; padding: 4px 6px; }
+.split-counts .muted { margin: 0; font-size: 0.8rem; }

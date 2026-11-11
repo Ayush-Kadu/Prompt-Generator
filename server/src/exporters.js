@@ -74,7 +74,8 @@ export async function buildWorkbook({ run, prompts }) {
     ['Run name', run?.name],
     ['Exported at', new Date().toISOString()],
     ['Brand', b.name], ['Brand website', b.website], ['Brand aliases', b.aliases?.join(', ')], ['Competitors', b.competitors?.join(', ')],
-    ['Brand mode', s.brandMode === 'mixed' ? `mixed (${s.brandedRatio}% branded)` : s.brandMode],
+    ['Brand mode', s.brandMode !== 'mixed' ? s.brandMode
+      : s.brandedCount !== null && s.brandedCount !== undefined ? `mixed (${s.brandedCount} branded in the total, per language)` : `mixed (${s.brandedRatio}% branded)`],
     ['Intents', (s.intents?.length ? s.intents : Object.keys(INTENTS)).join(', ')],
     ['Sentiment', s.sentiment], ['Topic', s.topic], ['Context', s.context], ['Instruction', s.instruction],
     ['Location', s.location], ['Languages', (s.languages?.length ? s.languages : [s.language]).filter(Boolean).join(', ')], ['Prompts per keyword', s.promptsPerKeyword + (Object.keys(s.promptsByKeyword || {}).length

@@ -9,7 +9,7 @@ const DEFAULT_FORM = {
   provider: '', model: '',
   name: '', keywords: '', promptsPerKeyword: 5, promptCounts: {}, minQualityScore: 0,
   brandName: '', brandWebsite: '', brandIndustry: '', brandDescription: '', brandAliases: '', competitors: '',
-  brandMode: 'non-branded', brandedRatio: 30, analyzeWebsite: false,
+  brandMode: 'non-branded', brandedRatio: 30, brandedSplit: 'ratio', brandedNumber: 0, analyzeWebsite: false,
   intents: [], sentiment: 'neutral', topic: '', location: '', languages: ['English'], instruction: '',
 };
 
