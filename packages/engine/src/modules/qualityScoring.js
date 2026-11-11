@@ -5,7 +5,9 @@
 
 import { brandMatcher, contentTokens, similarity, tokens } from '../text.js';
 
-const QUESTION_START = /^(what|which|who|how|why|where|when|is|are|can|could|should|does|do|will|would|best|top|compare|recommend|find|list|suggest|any|need|looking|i need|i want|i'm looking)\b/i;
+// Question words, requests, and first-person openings ("I run a…", "We export…", "As a student…"), which is how
+// people describe their situation to an AI assistant.
+const QUESTION_START = /^(what|which|who|how|why|where|when|is|are|can|could|should|does|do|will|would|best|top|compare|recommend|find|list|suggest|any|need|looking|i need|i want|i['’]?m|i am|i have|i run|i own|i work|i manage|i earn|i live|i plan|we|we['’]re|we are|our|my|as an?|for an?|help me|explain|tell me)\b/i;
 
 export const SCORE_WEIGHTS = {
   keyword: 25,      // prompt is clearly about its keyword

@@ -19,16 +19,34 @@ const AVOID_PER_KEYWORD = 15; // existing prompts shown to the model in top-up r
 const SENTIMENT_KEYS = ['positive', 'neutral', 'negative'];
 const bySentimentKey = (arr) => Object.fromEntries(SENTIMENT_KEYS.map((k, j) => [k, arr[j]]));
 
-export const GENERATION_SYSTEM = `You are a search-behaviour analyst who writes realistic prompts that real people type into AI assistants (ChatGPT, Gemini, Perplexity, Claude) while researching a product or service.
+export const GENERATION_SYSTEM = `You write the prompts real people type into AI assistants (ChatGPT, Gemini, Perplexity, Claude) when they have a need to solve, a decision to make or a topic to understand. A brand uses these prompts to measure how often AI assistants mention or recommend it.
 
-Rules you always follow:
-- Write natural, conversational queries a real customer would type. Vary length, phrasing and angle.
-- Every prompt must be clearly about the keyword it is assigned to.
-- No near-duplicates: two prompts that differ only by a word or punctuation count as the same prompt.
-- A NON-BRANDED prompt must never mention the brand, its aliases or its website. Competitor names are allowed only for comparison or alternative prompts.
-- A BRANDED prompt must mention the brand by name, naturally (e.g. reviews, pricing, "is <brand> good for", "<brand> vs ...").
+Why non-branded prompts matter:
+- A NON-BRANDED prompt is a question a potential customer asks before they know the brand exists. It measures unprompted visibility: whether an AI assistant brings this brand up on its own.
+- So every non-branded prompt must be one this brand could plausibly be part of a good answer to: it sits in the brand's industry, touches what the brand offers, and comes from the kind of person the brand serves. A generic question about the keyword that has nothing to do with this business is useless.
+- A non-branded prompt never mentions the brand, its aliases or its website. Competitor names are allowed only in comparison or alternatives prompts.
+
+How to write every prompt:
+- Write as a specific person in a real situation. Vary who is asking according to who actually asks about the keyword (for example a homeowner, a procurement head, a plant manager, a student, a small-business owner), and include their real constraints: budget, size or quantity, timeline, location, regulations, experience.
+- Use only search intents that genuinely fit the keyword. Topics, schemes, concepts, places and how-it-works questions get informational, comparison or review prompts. Use "near me", buying, booking, hiring or price prompts only where someone can actually buy, book, hire or visit it.
+- Every prompt is clearly about its keyword and includes the keyword or a natural form of it.
+- Natural, conversational wording a person would really type. Vary length and structure, and keep each prompt under about 25 words.
+- No near-duplicates: two prompts that differ only by a word, a persona or punctuation count as the same prompt.
+- A BRANDED prompt mentions the brand by name, naturally (e.g. reviews, pricing, "is <brand> good for", "<brand> vs ...").
+- Never invent facts about the brand.
 - ${SANDBOX_RULE}
-- Reply with JSON only. No prose, no code fences.`;
+- Reply with JSON only. No prose, no code fences.
+
+Examples. They only show the standard: never reuse their topics, wording or people.
+Good non-branded prompts:
+- Keyword "home loan for first-time buyers": "I earn ₹60,000 a month and want my first flat in Pune. How much home loan can I realistically get?" (informational; salaried first-time buyer with an income limit)
+- Keyword "cold storage warehouse": "We export 40 tonnes of grapes a month from Nashik. What should we check before signing with a cold storage provider?" (commercial; exporter with a volume and a location)
+- Keyword "Grand Trunk Road history": "For a school project, which cities did the Grand Trunk Road connect and why did it matter for trade?" (informational; student)
+Bad non-branded prompts:
+- "best Grand Trunk Road history near me": "near me" forced onto an informational topic.
+- "cold storage warehouse best price cold storage buy": keyword-stuffed; nobody types this.
+- "What is a home loan?": generic; ignores who the customers are and what the business offers.
+- "Is <brand> good for cold storage?": names the brand, so it is branded, not non-branded.`;
 
 const line = (label, value) =>
   value === null || value === undefined || value === '' || (Array.isArray(value) && !value.length)
@@ -52,6 +70,13 @@ export function buildGenerationPrompt(settings, batch) {
   }
 
   const avoid = Object.entries(batch.avoid || {}).filter(([, l]) => l.length);
+  const background = settings.context || profile.description || brand.description;
+  const knowsBusiness = Boolean(profile.industry || brand.industry || profile.offerings?.length || profile.audience?.length || background);
+  // No intents chosen = the model picks the ones that fit each keyword; chosen = the user's mix, as far as each keyword allows.
+  const intentList = intents.map((i) => `  - ${i}: ${INTENTS[i]}`).join('\n');
+  const intentRule = settings.intents.length
+    ? `Use these search intents, spread across each keyword's prompts as far as the keyword allows (never force "near me" or buying prompts onto an informational topic):\n${intentList}`
+    : `Allowed search intents. For each keyword use only the ones that genuinely fit it; do not force every intent onto every keyword:\n${intentList}`;
   return [
     '## Context',
     [
@@ -66,7 +91,8 @@ export function buildGenerationPrompt(settings, batch) {
       line('Market location', settings.location),
       line('Write prompts in', settings.language),
     ].filter(Boolean).join('\n') || '(none provided)',
-    renderSteering({ context: settings.context || profile.description || brand.description, instruction: null }),
+    renderSteering({ context: background, instruction: null }),
+    knowsBusiness ? null : 'Little is known about this business. Infer its likely customers from the keywords, the brand and the market location, and keep every prompt realistic for them.',
     '',
     '## Keywords',
     batch.keywords.map((k, i) => `${i + 1}. ${k}`).join('\n'),
@@ -75,7 +101,9 @@ export function buildGenerationPrompt(settings, batch) {
     batch.cells
       ? `For EACH keyword above, write exactly these prompts: ${counts.join(', ')}.`
       : `For EACH keyword above, write exactly ${counts.join(' and ')}.`,
-    `Spread the prompts across these search intents:\n${intents.map((i) => `  - ${i}: ${INTENTS[i]}`).join('\n')}`,
+    'Ground every prompt in the context above: it must make sense coming from someone who could become a customer of this business, given its industry, what it offers and who it serves.',
+    'Vary who is asking across each keyword\'s prompts (draw on the typical customers above where given) and give each person real constraints: budget, size or quantity, timeline, location, regulations or experience.',
+    intentRule,
     batch.cells
       ? `Sentiment / tone: give each prompt the sentiment it was requested with (${SENTIMENT_KEYS.map((s) => `${s}: ${SENTIMENTS[s]}`).join('; ')}) and put that sentiment in its "sentiment" field.`
       : `Sentiment / tone: ${settings.sentiment} — ${SENTIMENTS[settings.sentiment]}.`,

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildGenerationPrompt, createPromptEngine, EngineValidationError, extractSiteSignals, inferIntent, normalizeInstruction, scorePrompt, LANGUAGES,
+  buildGenerationPrompt, createPromptEngine, EngineValidationError, GENERATION_SYSTEM, extractSiteSignals, inferIntent, normalizeInstruction, scorePrompt, LANGUAGES,
 } from '../src/index.js';
 import { parseJsonReply } from '../src/llm.js';
 import { apportion } from '../src/schema.js';
@@ -41,6 +41,33 @@ test('quality scoring rewards natural, specific prompts and flags problems', () 
   assert.ok(bad.score < 50, `bad=${bad.score}`);
   assert.ok(bad.flags.includes('too-short'));
   assert.ok(leak.flags.includes('brand-leak'));
+});
+
+test('generation instructions: purpose of non-branded prompts, grounding, people, fitting intents, examples', () => {
+  assert.match(GENERATION_SYSTEM, /unprompted visibility/);
+  assert.match(GENERATION_SYSTEM, /homeowner, a procurement head/);
+  assert.match(GENERATION_SYSTEM, /Good non-branded prompts:[\s\S]+Bad non-branded prompts:/);
+  assert.doesNotMatch(GENERATION_SYSTEM, /product or service/);
+
+  const settings = {
+    brand: { name: 'Sweet Crumbs', aliases: [], competitors: [], industry: 'Bakery' }, intents: [], sentiment: 'neutral',
+    language: 'English', location: 'Pune', profile: { offerings: ['custom cakes'], audience: ['parents planning parties'] },
+  };
+  const batch = { keywords: ['eggless cakes'], branded: 0, nonBranded: 3 };
+  const ask = buildGenerationPrompt(settings, batch);
+  assert.match(ask, /Typical customers: parents planning parties/);
+  assert.match(ask, /Ground every prompt in the context above/);
+  assert.match(ask, /use only the ones that genuinely fit it/); // no intents chosen → the model picks fitting ones
+  assert.doesNotMatch(ask, /Little is known about this business/);
+  assert.match(buildGenerationPrompt({ ...settings, intents: ['commercial', 'local'] }, batch), /spread across each keyword's prompts as far as the keyword allows/);
+  // With nothing known about the business, the model is told to infer the customers.
+  assert.match(buildGenerationPrompt({ ...settings, brand: { ...settings.brand, industry: '' }, profile: null }, batch), /Little is known about this business/);
+});
+
+test('natural phrasing accepts first-person prompts', () => {
+  const s = scorePrompt({ text: 'We export 40 tonnes of grapes a month, what should we check in a cold storage provider', keyword: 'cold storage provider' });
+  assert.ok(!s.flags.includes('keyword-stuffed'), s.flags.join());
+  assert.ok(scorePrompt({ text: 'cold storage provider cheap price buy', keyword: 'cold storage provider' }).flags.includes('keyword-stuffed'));
 });
 
 test('validation errors are typed', async () => {
