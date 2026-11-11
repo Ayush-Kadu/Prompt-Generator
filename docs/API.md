@@ -111,6 +111,7 @@ curl -X POST localhost:5000/api/v1/keywords/extract -d '{"brand":{"name":"Sweet 
 # Send the .xlsx file itself as the body. Reads the first sheet with data: the column headed
 # "Keyword" (or "Keywords", "Term", "Query"…) if row 1 has one, otherwise column A. Deduped, max 2,000. .xls is not supported.
 # A "Prompts" (or "Count", "Number of prompts") column in row 1 fills `counts`, ready to send as promptsByKeyword.
+# Add ?counts=adjacent to read counts from the column right after the keywords even without a heading (a bare "keyword | number" sheet).
 curl -X POST localhost:5000/api/v1/keywords/import -H 'content-type: application/octet-stream' --data-binary @keywords.xlsx
 
 # Categorize or score prompts generated anywhere (no LLM call)

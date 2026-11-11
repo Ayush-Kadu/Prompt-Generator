@@ -11,10 +11,12 @@ const COUNT_HEADER = /^(prompts?|prompts? (count|per keyword)|(no\.?|number) of 
  * first column. Returns unique keywords (case-insensitive) in sheet order.
  * When row 1 also has a "Prompts" (or "Count", "Number of prompts"…) column, its
  * whole numbers become per-keyword prompt counts, capped at the engine limit.
+ * With `adjacentCounts`, a sheet without a count heading takes counts from the
+ * column right after the keywords (for files that are only "keyword | prompts").
  * @param {Buffer} buffer  the .xlsx file
  * @returns {Promise<{keywords:string[], counts:Record<string,number>, total:number, truncated:boolean, sheet:string|null}>}
  */
-export async function readKeywordsFromXlsx(buffer, { max = LIMITS.maxKeywords } = {}) {
+export async function readKeywordsFromXlsx(buffer, { max = LIMITS.maxKeywords, adjacentCounts = false } = {}) {
   const wb = new ExcelJS.Workbook();
   try {
     await wb.xlsx.load(buffer);
@@ -37,6 +39,7 @@ export async function readKeywordsFromXlsx(buffer, { max = LIMITS.maxKeywords } 
     }
   });
   if (startRow === 1 && countColumn !== null) startRow = 2; // a header row with only a count heading
+  if (countColumn === null && adjacentCounts) countColumn = column + 1;
 
   const seen = new Set();
   const keywords = [];

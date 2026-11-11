@@ -41,7 +41,8 @@ export function brandMatcher(brand) {
 export async function readKeywordFile(file) {
   const text = await file.text();
   const isCsv = /\.csv$/i.test(file.name);
-  const unquote = (s) => (s || '').replace(/^"|"$/g, '').trim();
+  // Strip quotes, and the ' our own CSV download puts before cells starting with = + - @.
+  const unquote = (s) => (s || '').trim().replace(/^"|"$/g, '').replace(/^'(?=[=+\-@])/, '').trim();
   const rows = text.split(/\r?\n/)
     .map((l) => (isCsv ? l.split(',') : [l]))
     .map(([kw, count]) => ({ keyword: unquote(kw), count: Number(unquote(count)) }))
@@ -75,3 +76,23 @@ export const storage = {
     } catch { /* ignore */ }
   },
 };
+
+/** Match key for a keyword: case-insensitive, extra spaces ignored (same rule as the server). */
+export const keywordKey = (k) => String(k).replace(/\s+/g, ' ').trim().toLowerCase();
+
+const csvCell = (v) => {
+  const s = String(v ?? '');
+  const safe = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s; // keep spreadsheets from running it as a formula
+  return `"${safe.replace(/"/g, '""')}"`;
+};
+
+/** Save rows as a CSV file that Excel opens as UTF-8 (so Hindi, Marathi… keywords survive). */
+export function downloadCsv(name, rows) {
+  const text = `﻿${rows.map((r) => r.map(csvCell).join(',')).join('\r\n')}`;
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}

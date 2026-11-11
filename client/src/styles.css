@@ -183,3 +183,5 @@ code { font-size: 0.8em; background: var(--accent-soft); padding: 1px 4px; borde
 .split-counts label { display: flex; align-items: center; gap: 6px; }
 .split-counts input { width: 80px; padding: 4px 6px; }
 .split-counts .muted { margin: 0; font-size: 0.8rem; }
+.counts-actions { margin: 6px 0 2px; }
+.per-keyword .note { margin: 4px 0; font-size: 0.8rem; }

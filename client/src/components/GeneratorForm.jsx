@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { api } from '../api.js';
-import { customCount, readKeywordFile, splitList, uniqueKeywords } from '../utils.js';
+import { customCount, downloadCsv, keywordKey, readKeywordFile, splitList, uniqueKeywords } from '../utils.js';
 
 const FALLBACK_LANGUAGES = ['English', 'Hindi', 'Marathi', 'Bengali', 'Gujarati'];
 
@@ -19,6 +19,9 @@ function Segmented({ value, options, onChange }) {
 
 export default function GeneratorForm({ meta, form, setForm, onSubmit, busy, onError }) {
   const fileRef = useRef(null);
+  const countsFileRef = useRef(null);
+  const [importingCounts, setImportingCounts] = useState(false);
+  const [countsNote, setCountsNote] = useState(null); // { text, missing: [keyword, count][] }
   const [analyzing, setAnalyzing] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -150,6 +153,62 @@ export default function GeneratorForm({ meta, form, setForm, onSubmit, busy, onE
     }
     setImporting(false);
   };
+
+  /** Import counts only: a file with keywords in column A and prompt counts next to them. */
+  const onCountsFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (/\.xls$/i.test(file.name)) {
+      onError('Old .xls files are not supported. Save the sheet as .xlsx in Excel and import it again.');
+      return;
+    }
+    setImportingCounts(true);
+    setCountsNote(null);
+    try {
+      const pairs = /\.xlsx$/i.test(file.name)
+        ? Object.entries((await api.importKeywords(file, { adjacentCounts: true })).counts || {})
+        : (await readKeywordFile(file)).counts;
+      if (!pairs.length) {
+        onError('No prompt counts found in that file. Put keywords in the first column and the number of prompts next to them (or under a "Prompts" heading).');
+      } else {
+        const byKey = new Map(keywords.map((k) => [keywordKey(k), k]));
+        const matched = [];
+        const missing = [];
+        for (const [k, n] of pairs) {
+          const own = byKey.get(keywordKey(k));
+          if (own) matched.push([own, n]);
+          else missing.push([k, n]);
+        }
+        mergeCounts(matched);
+        const capped = pairs.filter(([, n]) => n > limits.maxPerKeyword).length;
+        const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+        setCountsNote({
+          text: [
+            `Set counts for ${plural(matched.length, 'keyword')}.`,
+            capped ? `${capped} above ${limits.maxPerKeyword} were capped at ${limits.maxPerKeyword}.` : '',
+            missing.length ? `${plural(missing.length, 'keyword')} in the file ${missing.length === 1 ? 'is' : 'are'} not in your list.` : '',
+          ].filter(Boolean).join(' '),
+          missing,
+        });
+      }
+    } catch (err) {
+      onError(`Import failed: ${err.message}`);
+    }
+    setImportingCounts(false);
+  };
+
+  const addMissingKeywords = () => {
+    addKeywords(countsNote.missing.map(([k]) => k));
+    mergeCounts(countsNote.missing);
+    setCountsNote(null);
+  };
+
+  // Empty cells = the keyword uses the default, so a round trip through Excel keeps that.
+  const downloadCounts = () => downloadCsv('prompt-counts.csv', [
+    ['keyword', `prompts (empty = default ${defaultCount})`],
+    ...keywords.map((k) => [k, customCount(form.promptCounts, k) ?? '']),
+  ]);
 
   const toggleIntent = (i) =>
     set({ intents: form.intents.includes(i) ? form.intents.filter((x) => x !== i) : [...form.intents, i] });
@@ -327,7 +386,25 @@ export default function GeneratorForm({ meta, form, setForm, onSubmit, busy, onE
               Prompts for each keyword{' '}
               <em>{customised ? `${customised} of ${keywords.length} set individually` : `all use the default (${defaultCount})`}</em>
             </summary>
-            <small>Leave a box empty to use the default. Imports can fill these: a "Prompts" column in Excel, or a second column in CSV.</small>
+            <small>Leave a box empty to use the default. To import counts, use a file with keywords in column A and the number of prompts in column B.</small>
+            <div className="links counts-actions">
+              <button type="button" className="link" onClick={() => countsFileRef.current?.click()} disabled={importingCounts}>
+                {importingCounts ? 'Importing…' : 'Import counts (.xlsx / .csv)'}
+              </button>
+              <button type="button" className="link" onClick={downloadCounts}>Download as CSV</button>
+            </div>
+            <input ref={countsFileRef} type="file" accept=".csv,.xlsx" hidden onChange={onCountsFile} />
+            {countsNote && (
+              <p className="note">
+                {countsNote.text}
+                {countsNote.missing.length > 0 && (
+                  <>
+                    {' '}
+                    <button type="button" className="link" onClick={addMissingKeywords}>Add them with their counts</button>
+                  </>
+                )}
+              </p>
+            )}
             {keywords.length > 12 && (
               <input className="kw-filter" value={countFilter} placeholder="Find a keyword" aria-label="Find a keyword"
                 onChange={(e) => setCountFilter(e.target.value)} />

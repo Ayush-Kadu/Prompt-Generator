@@ -119,6 +119,14 @@ test('keywords import reads an .xlsx sheet (Keyword column, dedupe) and rejects 
   assert.deepEqual(c.keywords, ['custom cakes', 'cupcakes', 'eggless cakes']);
   assert.deepEqual(c.counts, { 'custom cakes': 10, 'eggless cakes': 25 });
 
+  // Counts-only import: no headings, keyword | number. Only read as counts when asked (?counts=adjacent).
+  const bare = new ExcelJS.Workbook();
+  bare.addWorksheet('Sheet1').addRows([['ports in india', 11], ['seaports in India', 7]]);
+  const bareBuf = await bare.xlsx.writeBuffer();
+  const asCounts = await (await fetch(`${base}/keywords/import?counts=adjacent`, { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: bareBuf })).json();
+  assert.deepEqual(asCounts.counts, { 'ports in india': 11, 'seaports in India': 7 });
+  assert.deepEqual((await (await upload(bareBuf, 'application/octet-stream')).json()).counts, {}); // plain keyword import ignores column B
+
   // No header row: the first column is used as-is.
   const plain = new ExcelJS.Workbook();
   plain.addWorksheet('Sheet1').addRows([['crm software'], ['email tools']]);

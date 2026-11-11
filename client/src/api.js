@@ -31,7 +31,9 @@ export const api = {
   meta: () => request('/meta'),
   analyzeBrand: (body) => request('/brand/analyze', { method: 'POST', body }),
   extractKeywords: (body) => request('/keywords/extract', { method: 'POST', body }),
-  importKeywords: (file) => request('/keywords/import', { method: 'POST', file }),
+  /** `adjacentCounts`: read prompt counts from the column after the keywords, even with no "Prompts" heading. */
+  importKeywords: (file, { adjacentCounts = false } = {}) =>
+    request(`/keywords/import${adjacentCounts ? '?counts=adjacent' : ''}`, { method: 'POST', file }),
   startRun: (body) => request('/runs', { method: 'POST', body }),
   run: (id) => request(`/runs/${id}`),
   runs: () => request('/runs'),

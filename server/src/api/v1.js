@@ -65,7 +65,8 @@ export function createV1Router({ registry, config }) {
     if (!Buffer.isBuffer(req.body) || !req.body.length) {
       return res.status(400).json({ error: 'Send the .xlsx file as the request body (not JSON).' });
     }
-    res.json(await readKeywordsFromXlsx(req.body));
+    // ?counts=adjacent: the column after the keywords holds prompt counts even without a "Prompts" heading.
+    res.json(await readKeywordsFromXlsx(req.body, { adjacentCounts: req.query.counts === 'adjacent' }));
   }));
 
   router.post('/prompts/categorize', (req, res, next) => {
